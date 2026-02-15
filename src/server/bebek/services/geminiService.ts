@@ -215,16 +215,31 @@ export const generateStyledPhotoWithTemplate = async (params: {
         parts: [
           {
             text:
+              `TASK:\n` +
               `${prompt}\n\n` +
-              'CRITICAL RULES:\n' +
-              '1) Keep the baby identity from SOURCE IMAGE exactly.\n' +
-              '2) TEMPLATE IMAGE is only for style/composition/background cues.\n' +
-              '3) Never copy or recreate the person/baby from TEMPLATE IMAGE.\n' +
-              '4) If there is any conflict, always prioritize SOURCE IMAGE identity.\n' +
-              '5) When in doubt, preserve SOURCE baby face and only adapt scene styling.',
+              'STRICT IDENTITY LOCK (MUST FOLLOW):\n' +
+              '1) SUBJECT (baby face, facial features, skin tone, hair, body proportions) MUST come from SOURCE IMAGE only.\n' +
+              '2) TEMPLATE IMAGE is STYLE REFERENCE ONLY (lighting, color palette, decor, framing).\n' +
+              '3) NEVER copy person/baby identity from TEMPLATE IMAGE.\n' +
+              '4) If SOURCE and TEMPLATE conflict, always keep SOURCE identity unchanged.\n' +
+              '5) If unsure, output should look like SOURCE baby in TEMPLATE-like scene, not TEMPLATE baby.\n' +
+              '6) Do not replicate template face, pose, or clothing exactly; only transfer overall style.\n' +
+              '7) Preserve SOURCE baby likeness as top priority even if style transfer is weaker.\n' +
+              '\nOUTPUT REQUIREMENT:\n' +
+              '- Return exactly one edited image.\n' +
+              '- Do not return the TEMPLATE image unchanged.',
           },
           {
-            text: 'TEMPLATE IMAGE (REFERENCE ONLY - DO NOT COPY SUBJECT):',
+            text: 'SOURCE IMAGE (IDENTITY ANCHOR - PRESERVE THIS BABY):',
+          },
+          {
+            inlineData: {
+              data: userImageBase64,
+              mimeType: userMimeType,
+            },
+          },
+          {
+            text: 'TEMPLATE IMAGE (STYLE ONLY - NEVER COPY ITS SUBJECT):',
           },
           {
             inlineData: {
@@ -233,7 +248,7 @@ export const generateStyledPhotoWithTemplate = async (params: {
             },
           },
           {
-            text: 'SOURCE IMAGE (IDENTITY TO PRESERVE):',
+            text: 'SOURCE IMAGE AGAIN (IDENTITY LOCK - USE THIS SUBJECT):',
           },
           {
             inlineData: {
@@ -246,6 +261,7 @@ export const generateStyledPhotoWithTemplate = async (params: {
     ],
     generationConfig: {
       responseModalities: ['IMAGE', 'TEXT'],
+      temperature: 0.2,
     },
   };
 
