@@ -1,8 +1,6 @@
 import { Router } from 'express';
 import { authenticateToken, AuthRequest } from '../middleware/authMiddleware';
 import { ensureUserInfo } from '../server/bebek/services/userInfoService';
-import { formatDateInTimeZone } from '../server/bebek/utils/timezone';
-import { getOrCreateDailyStats } from '../server/bebek/services/progressService';
 import { handleChatMessage, handleChatMessageStream, listChatMessages, listChatSessions } from '../server/bebek/services/chatService';
 import { logger } from '../utils/logger';
 import { attachRouteLogger } from '../utils/routeLogger';
@@ -37,8 +35,6 @@ export const createChatRouter = () => {
         name: authReq.user.name,
         email: authReq.user.email
       });
-      const today = formatDateInTimeZone(new Date(), userInfo.timezone || 'UTC');
-      const dailyStats = await getOrCreateDailyStats(userInfo, today);
 
       const imagePayload = image ? { data: image.data, mimeType: image.mimeType } : null;
 
@@ -47,7 +43,6 @@ export const createChatRouter = () => {
           user: userInfo,
           sessionId,
           message,
-          dailyStats,
           contextTags: context || null,
           imagePayload
         });
@@ -66,7 +61,6 @@ export const createChatRouter = () => {
         user: userInfo,
         sessionId,
         message,
-        dailyStats,
         contextTags: context || null,
         imagePayload
       });

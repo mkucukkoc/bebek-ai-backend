@@ -216,25 +216,29 @@ export const generateStyledPhotoWithTemplate = async (params: {
           {
             text:
               `${prompt}\n\n` +
-              'IMPORTANT INPUT ORDER:\n' +
-              '- IMAGE_1 is the SOURCE baby photo uploaded by the user.\n' +
-              '- IMAGE_2 is ONLY a style/template reference.\n\n' +
-              'Task:\n' +
-              'Create a newborn-style edit of IMAGE_1 using lighting, palette, pose mood, and composition cues from IMAGE_2.\n' +
-              'Preserve the identity from IMAGE_1 exactly: same baby face structure, eyes, nose, mouth, skin tone family, and realism.\n' +
-              'Do NOT copy or recreate the baby/person from IMAGE_2.\n' +
-              'If IMAGE_1 and IMAGE_2 conflict, ALWAYS prioritize IMAGE_1 identity.',
+              'CRITICAL RULES:\n' +
+              '1) Keep the baby identity from SOURCE IMAGE exactly.\n' +
+              '2) TEMPLATE IMAGE is only for style/composition/background cues.\n' +
+              '3) Never copy or recreate the person/baby from TEMPLATE IMAGE.\n' +
+              '4) If there is any conflict, always prioritize SOURCE IMAGE identity.\n' +
+              '5) When in doubt, preserve SOURCE baby face and only adapt scene styling.',
           },
           {
-            inlineData: {
-              data: userImageBase64,
-              mimeType: userMimeType,
-            },
+            text: 'TEMPLATE IMAGE (REFERENCE ONLY - DO NOT COPY SUBJECT):',
           },
           {
             inlineData: {
               data: templateImageBase64,
               mimeType: templateMimeType,
+            },
+          },
+          {
+            text: 'SOURCE IMAGE (IDENTITY TO PRESERVE):',
+          },
+          {
+            inlineData: {
+              data: userImageBase64,
+              mimeType: userMimeType,
             },
           },
         ],

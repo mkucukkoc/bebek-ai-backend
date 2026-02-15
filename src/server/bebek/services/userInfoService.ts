@@ -22,21 +22,6 @@ export interface UserInfo {
   updated_at?: string;
 }
 
-export interface DailyTargets {
-  calories_goal: number;
-  protein_goal_g: number;
-  carbs_goal_g: number;
-  fat_goal_g: number;
-}
-
-const activityMultipliers: Record<NonNullable<UserInfo['activity_level']>, number> = {
-  sedentary: 1.2,
-  light: 1.375,
-  moderate: 1.55,
-  active: 1.725,
-  very_active: 1.9
-};
-
 export const getUserInfo = async (userId: string): Promise<UserInfo | null> => {
   const snapshot = await db.collection('users_info').doc(userId).get();
   if (!snapshot.exists) {
@@ -90,41 +75,3 @@ export const updateUserInfo = async (userId: string, updates: Partial<UserInfo>)
   };
 };
 
-const getAge = (birthDate?: string): number | null => {
-  if (!birthDate) return null;
-  const date = new Date(birthDate);
-  if (Number.isNaN(date.getTime())) return null;
-  const diff = Date.now() - date.getTime();
-  return Math.floor(diff / (365.25 * 24 * 60 * 60 * 1000));
-};
-
-export const calculateDailyTargets = (user: UserInfo): DailyTargets => {
-  const weight = user.current_weight_kg || 70;
-  const height = user.height_cm || 170;
-  const age = getAge(user.birth_date) || 30;
-  const gender = user.gender || 'other';
-
-  const bmrBase = 10 * weight + 6.25 * height - 5 * age;
-  const bmr = gender === 'male' ? bmrBase + 5 : gender === 'female' ? bmrBase - 161 : bmrBase - 78;
-
-  const activityMultiplier = activityMultipliers[user.activity_level || 'sedentary'] || 1.2;
-  let calories = bmr * activityMultiplier;
-
-  if (user.goal === 'lose') {
-    calories *= 0.85;
-  } else if (user.goal === 'gain') {
-    calories *= 1.15;
-  }
-
-  const roundedCalories = Math.max(1200, Math.round(calories));
-  const proteinCalories = roundedCalories * 0.3;
-  const carbsCalories = roundedCalories * 0.4;
-  const fatCalories = roundedCalories * 0.3;
-
-  return {
-    calories_goal: roundedCalories,
-    protein_goal_g: Math.round(proteinCalories / 4),
-    carbs_goal_g: Math.round(carbsCalories / 4),
-    fat_goal_g: Math.round(fatCalories / 9)
-  };
-};
