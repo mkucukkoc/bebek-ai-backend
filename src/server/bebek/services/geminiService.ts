@@ -211,20 +211,33 @@ export const generateStyledPhotoWithTemplate = async (params: {
         parts: [
           {
             text:
-              'ROLE: You are editing the SOURCE BABY IMAGE, not generating a different baby.\n\n' +
-              'TASK:\n' +
-              'Create one vertical 9:16 ultra-realistic newborn studio photo by applying the requested style to the SOURCE BABY IMAGE.\n\n' +
-              'SCENE STYLE BRIEF (STYLE ONLY, NOT IDENTITY):\n' +
+              'TASK: Scene adaptation with strict identity preservation.\n\n' +
+              'You are given:\n' +
+              '1) SOURCE IMAGE -> This contains the real baby. Use this as the ONLY identity reference.\n' +
+              '2) SCENE BRIEF -> This text defines desired pose, framing, distance, lighting and environment.\n\n' +
+              'SCENE BRIEF:\n' +
               `${prompt}\n\n` +
-              'IDENTITY LOCK (HIGHEST PRIORITY):\n' +
-              '- Use ONLY the SOURCE BABY IMAGE as identity reference.\n' +
-              '- Preserve the same baby identity: face shape, eyes, nose, lips, skin tone, and proportions.\n' +
-              '- Never create a new baby identity.\n' +
-              '- If the style text says "baby/newborn", treat it as composition wording only; do NOT replace identity.\n' +
-              '- If any conflict occurs, keep SOURCE identity and reduce style transfer strength.\n\n' +
-              'QUALITY:\n' +
-              '- Professional newborn studio look.\n' +
-              '- Ultra realistic details and natural newborn softness.\n' +
+              'GOAL:\n' +
+              'Place the SOURCE baby into the requested scene.\n\n' +
+              'STRICT IDENTITY RULES:\n' +
+              '- Preserve the SOURCE baby exact face.\n' +
+              '- Keep original facial structure, head ratio, hairline, eyes, nose, lips, skin tone, expression structure, and baby proportions.\n' +
+              '- Do NOT generate a new baby.\n' +
+              '- Do NOT reinterpret the face.\n' +
+              '- Do NOT beautify or stylize identity.\n' +
+              '- The baby must remain 100% recognizable as the SOURCE baby.\n\n' +
+              'SCENE ADAPTATION RULES:\n' +
+              '- Match requested pose and camera distance from SCENE BRIEF.\n' +
+              '- Match lighting direction and softness.\n' +
+              '- Match depth of field and background blur.\n' +
+              '- If scene suggests subject farther from camera, keep that distance naturally.\n' +
+              '- Preserve realistic newborn skin texture and natural body proportions.\n\n' +
+              'PRIORITY:\n' +
+              '- If any conflict occurs, ALWAYS prioritize SOURCE identity over scene styling.\n\n' +
+              'OUTPUT:\n' +
+              '- Professional studio photograph look.\n' +
+              '- Ultra realistic.\n' +
+              '- No identity change.\n' +
               '- Return exactly one final image.',
           },
           {
@@ -245,11 +258,14 @@ export const generateStyledPhotoWithTemplate = async (params: {
     },
   };
 
+  const finalPromptText = requestBody.contents?.[0]?.parts?.find((part: any) => typeof part?.text === 'string')?.text || '';
   const startedAt = Date.now();
   logger.info(
     {
       model: resolvedModel,
       promptLength: prompt.length,
+      finalPromptLength: finalPromptText.length,
+      finalPromptPreview: finalPromptText.slice(0, 250),
       userMimeType,
       userImageBytesApprox: userImageBase64.length,
     },
