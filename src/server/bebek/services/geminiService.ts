@@ -181,8 +181,6 @@ export const generateStyledPhoto = async (params: {
 export const generateStyledPhotoWithTemplate = async (params: {
   userImageBase64: string;
   userMimeType: string;
-  templateImageBase64: string;
-  templateMimeType: string;
   prompt: string;
   model?: string;
 }) => {
@@ -190,8 +188,6 @@ export const generateStyledPhotoWithTemplate = async (params: {
   const {
     userImageBase64,
     userMimeType,
-    templateImageBase64,
-    templateMimeType,
     prompt,
   } = params;
   const resolvedModel = params.model || process.env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image';
@@ -215,21 +211,18 @@ export const generateStyledPhotoWithTemplate = async (params: {
         parts: [
           {
             text:
-              'Dikey 9:16 oraninda ultra gercekci profesyonel yenidogan studyo fotografi olustur.\n\n' +
-              'SAHNE VE STIL:\n' +
+              'TEST MODU (TEMPLATE DEVRE DISI):\n' +
+              'Sadece KAYNAK BEBEK GORSELINI kullanarak yeni bir fotograf uret.\n\n' +
+              'HEDEF SAHNE:\n' +
               `${prompt}\n\n` +
-              'ONEMLI:\n' +
-              'Bu sahneye KAYNAK BEBEK GORSELINDEKI bebegi yerlestir.\n\n' +
-              'KIMLIK KURALLARI:\n' +
-              '- SADECE KAYNAK BEBEK gorselini kimlik referansi olarak kullan.\n' +
-              '- Yuz yapisi, gozler, burun, dudaklar, cilt tonu birebir korunmali.\n' +
-              '- Yeni bir bebek uretme.\n' +
-              '- Sablondaki bebegi asla kopyalama.\n' +
-              '- Sablon gorsel sadece kompozisyon ve isik referansidir.\n' +
-              '- Cakisma durumunda her zaman KAYNAK BEBEK kimligini koru.\n' +
-              '- Kimlik degistirme, yuz yeniden uretme, stilize etme yasaktir.\n\n' +
-              'Ultra gercekci, yuksek cilt detayi, dogal newborn yumusakligi korunmali.\n' +
-              'Return exactly one edited image. Do not return TEMPLATE image unchanged.',
+              'KURALLAR:\n' +
+              '- Kimlik referansi SADECE kaynak bebek gorselidir.\n' +
+              '- Yuz yapisi, gozler, burun, dudaklar, cilt tonu ve oranlar korunacak.\n' +
+              '- Yeni bir bebek kimligi olusturma.\n' +
+              '- Cikti, kaynak bebegi bu sahneye yerlestirilmis profesyonel studyo fotografi gibi olmali.\n' +
+              '- Dikey 9:16 kompozisyon.\n' +
+              '- Ultra gercekci, yuksek cilt detayi, dogal newborn yumusakligi.\n' +
+              '- Tek bir gorsel dondur.',
           },
           {
             text: 'SOURCE BABY IMAGE (PRIMARY IDENTITY REFERENCE):',
@@ -238,15 +231,6 @@ export const generateStyledPhotoWithTemplate = async (params: {
             inlineData: {
               data: userImageBase64,
               mimeType: userMimeType,
-            },
-          },
-          {
-            text: 'TEMPLATE IMAGE (STYLE/LIGHTING/COMPOSITION ONLY):',
-          },
-          {
-            inlineData: {
-              data: templateImageBase64,
-              mimeType: templateMimeType,
             },
           },
         ],
@@ -264,9 +248,7 @@ export const generateStyledPhotoWithTemplate = async (params: {
       model: resolvedModel,
       promptLength: prompt.length,
       userMimeType,
-      templateMimeType,
       userImageBytesApprox: userImageBase64.length,
-      templateImageBytesApprox: templateImageBase64.length,
     },
     'Gemini newborn style generation request started'
   );

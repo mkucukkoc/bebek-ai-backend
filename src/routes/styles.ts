@@ -210,10 +210,6 @@ export const createStylesRouter = () => {
       const userId = authReq.user.id;
       const prompt = typeof req.body?.prompt === 'string' ? req.body.prompt.trim() : '';
       const styleId = typeof req.body?.style_id === 'string' ? req.body.style_id : null;
-      const templatePathInput =
-        typeof req.body?.template_path === 'string'
-          ? req.body.template_path
-          : (typeof req.body?.template_url === 'string' ? req.body.template_url : '');
       const userImageSource =
         typeof req.body?.user_image_url === 'string'
           ? req.body.user_image_url
@@ -227,23 +223,12 @@ export const createStylesRouter = () => {
         res.status(400).json({ error: 'invalid_request', message: 'prompt is required' });
         return;
       }
-      if (!templatePathInput) {
-        res.status(400).json({ error: 'invalid_request', message: 'template_path (or template_url) is required' });
-        return;
-      }
       if (!fileRequest.file && !userImageSource) {
         res.status(400).json({ error: 'invalid_request', message: 'image file or user_image_url is required' });
         return;
       }
 
       const bucket: any = storage.bucket();
-      const templateObjectPath = await resolveExistingTemplatePath(bucket, templatePathInput);
-      if (!templateObjectPath) {
-        res.status(400).json({ error: 'invalid_request', message: 'template path/url is invalid' });
-        return;
-      }
-
-      const templateFile = bucket.file(templateObjectPath);
       const now = Date.now();
       let userMimeType = 'image/jpeg';
       let userInputPath = '';
@@ -275,25 +260,18 @@ export const createStylesRouter = () => {
         return;
       }
 
-      const [templateBuffer] = await templateFile.download();
-      const templateMimeType = templateFile.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
-
       logger.info({
         userId,
         styleId,
         requestId,
         model: requestedModel || process.env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image',
-        templatePath: templateObjectPath,
         userImagePath: userInputPath,
         userImageBytes: userInputBuffer.length,
-        templateBytes: templateBuffer.length,
       }, 'Newborn generation request prepared');
 
       const generated = await generateStyledPhotoWithTemplate({
         userImageBase64: userInputBuffer.toString('base64'),
         userMimeType,
-        templateImageBase64: templateBuffer.toString('base64'),
-        templateMimeType,
         prompt,
         model: requestedModel,
       });
@@ -312,7 +290,6 @@ export const createStylesRouter = () => {
       });
 
       const inputUrl = await getSignedOrPublicUrl(userInputPath);
-      const templateUrl = await getSignedOrPublicUrl(templateObjectPath);
       const outputUrl = await getSignedOrPublicUrl(generatedPath);
 
       const recordId = generatedId;
@@ -329,8 +306,6 @@ export const createStylesRouter = () => {
           requestId,
           inputImagePath: userInputPath,
           inputImageUrl: inputUrl,
-          templatePath: templateObjectPath,
-          templateUrl,
           outputImagePath: generatedPath,
           outputImageUrl: outputUrl,
           outputMimeType: generated.mimeType || 'image/png',
@@ -353,7 +328,6 @@ export const createStylesRouter = () => {
         style_id: styleId,
         user_id: userId,
         prompt,
-        template_path: templateObjectPath,
         input: {
           path: userInputPath,
           url: inputUrl,
@@ -416,7 +390,6 @@ export const createStylesRouter = () => {
           outputImagePath: data?.outputImagePath || null,
           outputMimeType: data?.outputMimeType || null,
           inputImageUrl: data?.inputImageUrl || null,
-          templateUrl: data?.templateUrl || null,
           createdAt: createdAtIso,
         };
       });
