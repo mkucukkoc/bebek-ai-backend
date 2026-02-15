@@ -264,6 +264,8 @@ export const createStylesRouter = () => {
         userId,
         styleId,
         requestId,
+        promptLength: prompt.length,
+        promptPreview: prompt.slice(0, 180),
         model: requestedModel || process.env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image',
         userImagePath: userInputPath,
         userImageBytes: userInputBuffer.length,
