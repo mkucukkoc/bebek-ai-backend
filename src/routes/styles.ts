@@ -112,7 +112,15 @@ export const createStylesRouter = () => {
         throw new Error(`Unable to download source image from URL (${response.status})`);
       }
       const arrayBuffer = await response.arrayBuffer();
-      const mimeType = response.headers.get('content-type') || 'image/jpeg';
+      const responseMime = (response.headers.get('content-type') || '').toLowerCase().trim();
+      const sourceLower = source.toLowerCase();
+      const inferredMime =
+        sourceLower.includes('.png') ? 'image/png'
+          : sourceLower.includes('.webp') ? 'image/webp'
+            : sourceLower.includes('.heic') ? 'image/heic'
+              : sourceLower.includes('.jpg') || sourceLower.includes('.jpeg') ? 'image/jpeg'
+                : 'image/jpeg';
+      const mimeType = responseMime.startsWith('image/') ? responseMime : inferredMime;
       return { buffer: Buffer.from(arrayBuffer), mimeType, objectPath: null };
     }
 

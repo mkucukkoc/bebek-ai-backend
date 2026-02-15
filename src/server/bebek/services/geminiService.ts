@@ -216,9 +216,14 @@ export const generateStyledPhotoWithTemplate = async (params: {
           {
             text:
               `${prompt}\n\n` +
-              'Edit the user image according to the newborn template style. ' +
-              'Keep baby identity, face, skin tone, and core features consistent. ' +
-              'Use template only as composition/style reference.',
+              'IMPORTANT INPUT ORDER:\n' +
+              '- IMAGE_1 is the SOURCE baby photo uploaded by the user.\n' +
+              '- IMAGE_2 is ONLY a style/template reference.\n\n' +
+              'Task:\n' +
+              'Create a newborn-style edit of IMAGE_1 using lighting, palette, pose mood, and composition cues from IMAGE_2.\n' +
+              'Preserve the identity from IMAGE_1 exactly: same baby face structure, eyes, nose, mouth, skin tone family, and realism.\n' +
+              'Do NOT copy or recreate the baby/person from IMAGE_2.\n' +
+              'If IMAGE_1 and IMAGE_2 conflict, ALWAYS prioritize IMAGE_1 identity.',
           },
           {
             inlineData: {
