@@ -181,6 +181,8 @@ export const generateStyledPhoto = async (params: {
 export const generateStyledPhotoWithTemplate = async (params: {
   userImageBase64: string;
   userMimeType: string;
+  templateImageBase64: string;
+  templateMimeType: string;
   prompt: string;
   model?: string;
 }) => {
@@ -188,6 +190,8 @@ export const generateStyledPhotoWithTemplate = async (params: {
   const {
     userImageBase64,
     userMimeType,
+    templateImageBase64,
+    templateMimeType,
     prompt,
   } = params;
   const resolvedModel = params.model || process.env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image';
@@ -214,11 +218,12 @@ export const generateStyledPhotoWithTemplate = async (params: {
               'TASK: Scene adaptation with strict identity preservation.\n\n' +
               'You are given:\n' +
               '1) SOURCE IMAGE -> This contains the real baby. Use this as the ONLY identity reference.\n' +
-              '2) SCENE BRIEF -> This text defines desired pose, framing, distance, lighting and environment.\n\n' +
+              '2) TEMPLATE IMAGE -> This defines desired scene, pose, framing, distance, lighting and environment.\n' +
+              '3) SCENE BRIEF -> Additional style notes.\n\n' +
               'SCENE BRIEF:\n' +
               `${prompt}\n\n` +
               'GOAL:\n' +
-              'Place the SOURCE baby into the requested scene.\n\n' +
+              'Place the SOURCE baby into the TEMPLATE scene.\n\n' +
               'STRICT IDENTITY RULES:\n' +
               '- Preserve the SOURCE baby exact face.\n' +
               '- Keep original facial structure, head ratio, hairline, eyes, nose, lips, skin tone, expression structure, and baby proportions.\n' +
@@ -251,6 +256,15 @@ export const generateStyledPhotoWithTemplate = async (params: {
               mimeType: userMimeType,
             },
           },
+          {
+            text: 'TEMPLATE IMAGE (SCENE REFERENCE ONLY - NEVER COPY TEMPLATE BABY IDENTITY):',
+          },
+          {
+            inlineData: {
+              data: templateImageBase64,
+              mimeType: templateMimeType,
+            },
+          },
         ],
       },
     ],
@@ -269,7 +283,9 @@ export const generateStyledPhotoWithTemplate = async (params: {
       finalPromptLength: finalPromptText.length,
       finalPromptPreview: finalPromptText.slice(0, 250),
       userMimeType,
+      templateMimeType,
       userImageBytesApprox: userImageBase64.length,
+      templateImageBytesApprox: templateImageBase64.length,
     },
     'Gemini newborn style generation request started'
   );

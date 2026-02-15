@@ -29,6 +29,23 @@ export const createStylesRouter = () => {
     return 'jpg';
   };
 
+  const NEWBORN_TEMPLATE_URLS: Record<string, string> = {
+    n1: 'https://firebasestorage.googleapis.com/v0/b/bebek-ai.firebasestorage.app/o/assets%2Fyenidogan%2FY%C4%B1ld%C4%B1z%20Stu%CC%88dyo.png?alt=media&token=b32006cb-948e-4829-b598-13dff314088d',
+    n2: 'https://firebasestorage.googleapis.com/v0/b/bebek-ai.firebasestorage.app/o/assets%2Fyenidogan%2FBeyaz%20-%20Pelus%CC%A7.png?alt=media&token=84206847-1c7f-4536-b2c8-4343bdfec596',
+    n3: 'https://firebasestorage.googleapis.com/v0/b/bebek-ai.firebasestorage.app/o/assets%2Fyenidogan%2FKruvasan%20Stu%CC%88dyo.png?alt=media&token=764021f4-cea1-444d-915f-630036184222',
+    n4: 'https://firebasestorage.googleapis.com/v0/b/bebek-ai.firebasestorage.app/o/assets%2Fyenidogan%2FBulut%20Ru%CC%88ya%20Stu%CC%88dyo.png?alt=media&token=931dd6c5-c31e-4ce8-a33c-1a2f32a22791',
+    n5: 'https://firebasestorage.googleapis.com/v0/b/bebek-ai.firebasestorage.app/o/assets%2Fyenidogan%2FC%CC%A7ic%CC%A7ekli%20Bahar.png?alt=media&token=fa51b742-6afa-4a44-9d99-c49846c8af35',
+    n6: 'https://firebasestorage.googleapis.com/v0/b/bebek-ai.firebasestorage.app/o/assets%2Fyenidogan%2FAy%C4%B1c%C4%B1k%20Pelus%CC%A7.png?alt=media&token=5ec3457e-6d3e-445c-acec-9fef61b6c38c',
+    n7: 'https://firebasestorage.googleapis.com/v0/b/bebek-ai.firebasestorage.app/o/assets%2Fyenidogan%2FAlt%C4%B1n%20Gu%CC%88n%20Bat%C4%B1m%C4%B1.png?alt=media&token=5c1874f8-e0f0-4537-af42-f18953b993f2',
+    n8: 'https://firebasestorage.googleapis.com/v0/b/bebek-ai.firebasestorage.app/o/assets%2Fyenidogan%2FVintage%20Sepet.png?alt=media&token=d2a0ec3f-b99b-4b0b-ae43-d1a911088e05',
+    n9: 'https://firebasestorage.googleapis.com/v0/b/bebek-ai.firebasestorage.app/o/assets%2Fyenidogan%2FGalaksi%20Bebek.png?alt=media&token=92ac051b-4eea-4333-96d7-b617f5395be4',
+    n10: 'https://firebasestorage.googleapis.com/v0/b/bebek-ai.firebasestorage.app/o/assets%2Fyenidogan%2FDev%20Oyuncak%20Du%CC%88nyas%C4%B1.png?alt=media&token=90219c63-d2dd-4f53-a0ea-ed7cd9a24a23',
+    n11: 'https://firebasestorage.googleapis.com/v0/b/bebek-ai.firebasestorage.app/o/assets%2Fyenidogan%2FUc%CC%A7an%20Balon.png?alt=media&token=5f0d6af5-07eb-4b3a-bb10-b109f85f7c69',
+    n12: 'https://firebasestorage.googleapis.com/v0/b/bebek-ai.firebasestorage.app/o/assets%2Fyenidogan%2FMasal%20Kitab%C4%B1.png?alt=media&token=09b0d4da-0ec6-4c4b-86dc-a7bcba5ea7a5',
+    n13: 'https://firebasestorage.googleapis.com/v0/b/bebek-ai.firebasestorage.app/o/assets%2Fyenidogan%2FKum%20Ru%CC%88yas%C4%B1.png?alt=media&token=14ad8cf2-837a-4874-9128-8bda46fbde0a',
+    n14: 'https://firebasestorage.googleapis.com/v0/b/bebek-ai.firebasestorage.app/o/assets%2Fyenidogan%2FUzay%20Astronot%20Bebek.png?alt=media&token=ec2b3586-03ea-4b1b-99b7-00a0694c1264',
+  };
+
   const normalizeKey = (value: string) =>
     value
       .normalize('NFKD')
@@ -210,6 +227,7 @@ export const createStylesRouter = () => {
       const userId = authReq.user.id;
       const prompt = typeof req.body?.prompt === 'string' ? req.body.prompt.trim() : '';
       const styleId = typeof req.body?.style_id === 'string' ? req.body.style_id : null;
+      const requestedTemplateUrl = typeof req.body?.template_url === 'string' ? req.body.template_url.trim() : '';
       const userImageSource =
         typeof req.body?.user_image_url === 'string'
           ? req.body.user_image_url
@@ -221,6 +239,14 @@ export const createStylesRouter = () => {
 
       if (!prompt) {
         res.status(400).json({ error: 'invalid_request', message: 'prompt is required' });
+        return;
+      }
+      const resolvedTemplateUrl = requestedTemplateUrl || (styleId ? NEWBORN_TEMPLATE_URLS[styleId] : '');
+      if (!resolvedTemplateUrl) {
+        res.status(400).json({
+          error: 'invalid_request',
+          message: 'A valid style_id (n1-n14) or template_url is required',
+        });
         return;
       }
       if (!fileRequest.file && !userImageSource) {
@@ -259,6 +285,7 @@ export const createStylesRouter = () => {
         res.status(400).json({ error: 'invalid_request', message: 'User image could not be loaded' });
         return;
       }
+      const templateResolved = await downloadImageFromSource(bucket, resolvedTemplateUrl);
 
       logger.info({
         userId,
@@ -269,11 +296,15 @@ export const createStylesRouter = () => {
         model: requestedModel || process.env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image',
         userImagePath: userInputPath,
         userImageBytes: userInputBuffer.length,
+        templateUrl: resolvedTemplateUrl,
+        templateBytes: templateResolved.buffer.length,
       }, 'Newborn generation request prepared');
 
       const generated = await generateStyledPhotoWithTemplate({
         userImageBase64: userInputBuffer.toString('base64'),
         userMimeType,
+        templateImageBase64: templateResolved.buffer.toString('base64'),
+        templateMimeType: templateResolved.mimeType || 'image/png',
         prompt,
         model: requestedModel,
       });
@@ -308,6 +339,7 @@ export const createStylesRouter = () => {
           requestId,
           inputImagePath: userInputPath,
           inputImageUrl: inputUrl,
+          templateUrl: resolvedTemplateUrl,
           outputImagePath: generatedPath,
           outputImageUrl: outputUrl,
           outputMimeType: generated.mimeType || 'image/png',
@@ -330,6 +362,7 @@ export const createStylesRouter = () => {
         style_id: styleId,
         user_id: userId,
         prompt,
+        template_url: resolvedTemplateUrl,
         input: {
           path: userInputPath,
           url: inputUrl,
@@ -392,6 +425,7 @@ export const createStylesRouter = () => {
           outputImagePath: data?.outputImagePath || null,
           outputMimeType: data?.outputMimeType || null,
           inputImageUrl: data?.inputImageUrl || null,
+          templateUrl: data?.templateUrl || null,
           createdAt: createdAtIso,
         };
       });
