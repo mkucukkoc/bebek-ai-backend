@@ -230,7 +230,7 @@ export const generateStyledPhotoWithTemplate = async (params: {
               'Return exactly one edited image. Do not return TEMPLATE image unchanged.',
           },
           {
-            text: 'SOURCE IMAGE (IDENTITY ANCHOR - PRESERVE THIS BABY):',
+            text: 'SOURCE BABY IMAGE (PRIMARY IDENTITY REFERENCE):',
           },
           {
             inlineData: {
@@ -239,7 +239,7 @@ export const generateStyledPhotoWithTemplate = async (params: {
             },
           },
           {
-            text: 'TEMPLATE IMAGE (STYLE ONLY - NEVER COPY ITS SUBJECT):',
+            text: 'TEMPLATE IMAGE (STYLE/LIGHTING/COMPOSITION ONLY):',
           },
           {
             inlineData: {
@@ -248,7 +248,7 @@ export const generateStyledPhotoWithTemplate = async (params: {
             },
           },
           {
-            text: 'SOURCE IMAGE AGAIN (IDENTITY LOCK - USE THIS SUBJECT):',
+            text: 'SOURCE BABY IMAGE AGAIN (IDENTITY LOCK - FINAL PRIORITY):',
           },
           {
             inlineData: {
@@ -260,7 +260,8 @@ export const generateStyledPhotoWithTemplate = async (params: {
       },
     ],
     generationConfig: {
-      responseModalities: ['IMAGE', 'TEXT'],
+      responseModalities: ['IMAGE'],
+      responseMimeType: 'image/png',
       temperature: 0.2,
     },
   };
