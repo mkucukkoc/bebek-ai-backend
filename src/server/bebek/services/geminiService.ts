@@ -211,18 +211,18 @@ export const generateStyledPhotoWithTemplate = async (params: {
         parts: [
           {
             text:
-              'TEST MODU (TEMPLATE DEVRE DISI):\n' +
-              'Sadece KAYNAK BEBEK GORSELINI kullanarak yeni bir fotograf uret.\n\n' +
-              'HEDEF SAHNE:\n' +
+              
+              'Use only the SOURCE BABY IMAGE to produce a new photo.\n\n' +
+              'TARGET SCENE:\n' +
               `${prompt}\n\n` +
-              'KURALLAR:\n' +
-              '- Kimlik referansi SADECE kaynak bebek gorselidir.\n' +
-              '- Yuz yapisi, gozler, burun, dudaklar, cilt tonu ve oranlar korunacak.\n' +
-              '- Yeni bir bebek kimligi olusturma.\n' +
-              '- Cikti, kaynak bebegi bu sahneye yerlestirilmis profesyonel studyo fotografi gibi olmali.\n' +
-              '- Dikey 9:16 kompozisyon.\n' +
-              '- Ultra gercekci, yuksek cilt detayi, dogal newborn yumusakligi.\n' +
-              '- Tek bir gorsel dondur.',
+              'RULES:\n' +
+              '- Identity reference must be ONLY the source baby image.\n' +
+              '- Preserve facial structure, eyes, nose, lips, skin tone, and body proportions.\n' +
+              '- Do not create a new baby identity.\n' +
+              '- Output should look like a professional studio photo with the source baby adapted to the target scene.\n' +
+              '- Vertical 9:16 composition.\n' +
+              '- Ultra realistic, high skin detail, natural newborn softness.\n' +
+              '- Return exactly one image.',
           },
           {
             text: 'SOURCE BABY IMAGE (PRIMARY IDENTITY REFERENCE):',
