@@ -215,36 +215,40 @@ export const generateStyledPhotoWithTemplate = async (params: {
         parts: [
           {
             text:
-              'TASK: Scene adaptation with strict identity preservation.\n\n' +
+              'TASK: Identity-preserving scene adaptation using two provided images.\n\n' +
               'You are given:\n' +
-              '1) SOURCE IMAGE -> This contains the real baby. Use this as the ONLY identity reference.\n' +
-              '2) TEMPLATE IMAGE -> This defines desired scene, pose, framing, distance, lighting and environment.\n' +
+              '1) SOURCE IMAGE -> Contains the real baby. This is the ONLY identity reference.\n' +
+              '2) TEMPLATE IMAGE -> Defines pose, framing, camera distance, lighting and environment.\n' +
               '3) SCENE BRIEF -> Additional style notes.\n\n' +
               'SCENE BRIEF:\n' +
               `${prompt}\n\n` +
+              'IMPORTANT:\n' +
+              'This is NOT a new baby generation task.\n' +
+              'This is an image editing and identity transfer task.\n\n' +
               'GOAL:\n' +
-              'Place the SOURCE baby into the TEMPLATE scene.\n\n' +
-              'STRICT IDENTITY RULES:\n' +
-              '- Preserve the SOURCE baby exact face.\n' +
-              '- Keep original facial structure, head ratio, hairline, eyes, nose, lips, skin tone, expression structure, and baby proportions.\n' +
-              '- Preserve eye state exactly (open eyes must stay open, closed eyes must stay closed).\n' +
-              '- Preserve facial expression exactly (smile/neutral/crying must not change).\n' +
+              'Place the SOURCE baby into the TEMPLATE scene while preserving 100% identity.\n\n' +
+              'STRICT IDENTITY PRESERVATION (HIGHEST PRIORITY):\n' +
+              '- Preserve exact facial structure.\n' +
+              '- Preserve head shape and proportions.\n' +
+              '- Preserve eyes, nose, lips exactly.\n' +
+              '- Preserve skin tone.\n' +
+              '- Preserve natural baby asymmetry.\n' +
+              '- Preserve expression geometry.\n' +
+              '- Preserve eye state exactly (open/closed must not change).\n' +
               '- Do NOT generate a new baby.\n' +
-              '- Do NOT reinterpret the face.\n' +
-              '- Do NOT beautify or stylize identity.\n' +
-              '- The baby must remain 100% recognizable as the SOURCE baby.\n\n' +
-              'SCENE ADAPTATION RULES:\n' +
-              '- Match requested pose and camera distance from SCENE BRIEF.\n' +
+              '- Do NOT reinterpret the identity.\n' +
+              '- Do NOT beautify or stylize the face.\n' +
+              '- The baby must remain fully recognizable.\n\n' +
+              'SCENE ADAPTATION:\n' +
+              '- Match TEMPLATE pose and camera distance.\n' +
               '- Match lighting direction and softness.\n' +
-              '- Match depth of field and background blur.\n' +
-              '- If scene suggests subject farther from camera, keep that distance naturally.\n' +
-              '- Preserve realistic newborn skin texture and natural body proportions.\n\n' +
-              'PRIORITY:\n' +
-              '- If any conflict occurs, ALWAYS prioritize SOURCE identity over scene styling.\n\n' +
+              '- Match depth of field.\n' +
+              '- Maintain natural body proportions.\n' +
+              '- Keep realistic newborn skin texture.\n\n' +
+              'If any conflict occurs, ALWAYS prioritize SOURCE identity over scene styling.\n\n' +
               'OUTPUT:\n' +
-              '- Professional studio photograph look.\n' +
               '- Ultra realistic.\n' +
-              '- No identity change.\n' +
+              '- Professional studio photograph look.\n' +
               '- Return exactly one final image.',
           },
           {
