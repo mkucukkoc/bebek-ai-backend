@@ -211,18 +211,21 @@ export const generateStyledPhotoWithTemplate = async (params: {
         parts: [
           {
             text:
-              
-              'Use only the SOURCE BABY IMAGE to produce a new photo.\n\n' +
-              'TARGET SCENE:\n' +
+              'ROLE: You are editing the SOURCE BABY IMAGE, not generating a different baby.\n\n' +
+              'TASK:\n' +
+              'Create one vertical 9:16 ultra-realistic newborn studio photo by applying the requested style to the SOURCE BABY IMAGE.\n\n' +
+              'SCENE STYLE BRIEF (STYLE ONLY, NOT IDENTITY):\n' +
               `${prompt}\n\n` +
-              'RULES:\n' +
-              '- Identity reference must be ONLY the source baby image.\n' +
-              '- Preserve facial structure, eyes, nose, lips, skin tone, and body proportions.\n' +
-              '- Do not create a new baby identity.\n' +
-              '- Output should look like a professional studio photo with the source baby adapted to the target scene.\n' +
-              '- Vertical 9:16 composition.\n' +
-              '- Ultra realistic, high skin detail, natural newborn softness.\n' +
-              '- Return exactly one image.',
+              'IDENTITY LOCK (HIGHEST PRIORITY):\n' +
+              '- Use ONLY the SOURCE BABY IMAGE as identity reference.\n' +
+              '- Preserve the same baby identity: face shape, eyes, nose, lips, skin tone, and proportions.\n' +
+              '- Never create a new baby identity.\n' +
+              '- If the style text says "baby/newborn", treat it as composition wording only; do NOT replace identity.\n' +
+              '- If any conflict occurs, keep SOURCE identity and reduce style transfer strength.\n\n' +
+              'QUALITY:\n' +
+              '- Professional newborn studio look.\n' +
+              '- Ultra realistic details and natural newborn softness.\n' +
+              '- Return exactly one final image.',
           },
           {
             text: 'SOURCE BABY IMAGE (PRIMARY IDENTITY REFERENCE):',
@@ -238,7 +241,7 @@ export const generateStyledPhotoWithTemplate = async (params: {
     ],
     generationConfig: {
       responseModalities: ['IMAGE', 'TEXT'],
-      temperature: 0.2,
+      temperature: 0,
     },
   };
 
