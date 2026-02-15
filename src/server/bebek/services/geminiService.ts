@@ -215,19 +215,19 @@ export const generateStyledPhotoWithTemplate = async (params: {
         parts: [
           {
             text:
-              `TASK:\n` +
-              `${prompt}\n\n` +
-              'STRICT IDENTITY LOCK (MUST FOLLOW):\n' +
-              '1) SUBJECT (baby face, facial features, skin tone, hair, body proportions) MUST come from SOURCE IMAGE only.\n' +
-              '2) TEMPLATE IMAGE is STYLE REFERENCE ONLY (lighting, color palette, decor, framing).\n' +
-              '3) NEVER copy person/baby identity from TEMPLATE IMAGE.\n' +
-              '4) If SOURCE and TEMPLATE conflict, always keep SOURCE identity unchanged.\n' +
-              '5) If unsure, output should look like SOURCE baby in TEMPLATE-like scene, not TEMPLATE baby.\n' +
-              '6) Do not replicate template face, pose, or clothing exactly; only transfer overall style.\n' +
-              '7) Preserve SOURCE baby likeness as top priority even if style transfer is weaker.\n' +
-              '\nOUTPUT REQUIREMENT:\n' +
-              '- Return exactly one edited image.\n' +
-              '- Do not return the TEMPLATE image unchanged.',
+              'Create a vertical 9:16 ultra realistic newborn photography scene.\n\n' +
+              `SCENE:\n${prompt}\n\n` +
+              'IDENTITY RULES:\n' +
+              '- Use the SOURCE BABY IMAGE as the only identity reference.\n' +
+              '- Preserve exact facial structure, eyes, nose, lips, skin tone, and baby proportions.\n' +
+              '- Maintain true realism of the original baby.\n' +
+              '- Do NOT change baby facial identity.\n' +
+              '- TEMPLATE IMAGE is only for scene composition and lighting reference.\n' +
+              '- Never copy or recreate any baby from the template image.\n' +
+              '- If any conflict occurs, always prioritize SOURCE BABY identity.\n\n' +
+              'Output must look like a professional newborn studio photograph.\n' +
+              'Ultra realistic. High detail skin texture. Natural newborn softness.\n\n' +
+              'Return exactly one edited image. Do not return TEMPLATE image unchanged.',
           },
           {
             text: 'SOURCE IMAGE (IDENTITY ANCHOR - PRESERVE THIS BABY):',
