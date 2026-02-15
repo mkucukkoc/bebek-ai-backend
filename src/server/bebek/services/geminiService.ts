@@ -247,21 +247,11 @@ export const generateStyledPhotoWithTemplate = async (params: {
               mimeType: templateMimeType,
             },
           },
-          {
-            text: 'SOURCE BABY IMAGE AGAIN (IDENTITY LOCK - FINAL PRIORITY):',
-          },
-          {
-            inlineData: {
-              data: userImageBase64,
-              mimeType: userMimeType,
-            },
-          },
         ],
       },
     ],
     generationConfig: {
-      responseModalities: ['IMAGE'],
-      responseMimeType: 'image/png',
+      responseModalities: ['IMAGE', 'TEXT'],
       temperature: 0.2,
     },
   };
@@ -285,12 +275,16 @@ export const generateStyledPhotoWithTemplate = async (params: {
       `${GEMINI_BASE_URL}/models/${resolvedModel}:generateContent?key=${apiKey}`,
       requestBody
     );
-  } catch (error) {
+  } catch (error: any) {
+    const providerStatus = error?.response?.status;
+    const providerData = error?.response?.data;
     logger.error(
       {
         err: error,
         model: resolvedModel,
         elapsedMs: Date.now() - startedAt,
+        providerStatus,
+        providerData,
       },
       'Gemini newborn style generation request failed'
     );
