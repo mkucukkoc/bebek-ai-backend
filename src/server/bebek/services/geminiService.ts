@@ -215,18 +215,20 @@ export const generateStyledPhotoWithTemplate = async (params: {
         parts: [
           {
             text:
-              'Create a vertical 9:16 ultra realistic newborn photography scene.\n\n' +
-              `SCENE:\n${prompt}\n\n` +
-              'IDENTITY RULES:\n' +
-              '- Use the SOURCE BABY IMAGE as the only identity reference.\n' +
-              '- Preserve exact facial structure, eyes, nose, lips, skin tone, and baby proportions.\n' +
-              '- Maintain true realism of the original baby.\n' +
-              '- Do NOT change baby facial identity.\n' +
-              '- TEMPLATE IMAGE is only for scene composition and lighting reference.\n' +
-              '- Never copy or recreate any baby from the template image.\n' +
-              '- If any conflict occurs, always prioritize SOURCE BABY identity.\n\n' +
-              'Output must look like a professional newborn studio photograph.\n' +
-              'Ultra realistic. High detail skin texture. Natural newborn softness.\n\n' +
+              'Dikey 9:16 oraninda ultra gercekci profesyonel yenidogan studyo fotografi olustur.\n\n' +
+              'SAHNE VE STIL:\n' +
+              `${prompt}\n\n` +
+              'ONEMLI:\n' +
+              'Bu sahneye KAYNAK BEBEK GORSELINDEKI bebegi yerlestir.\n\n' +
+              'KIMLIK KURALLARI:\n' +
+              '- SADECE KAYNAK BEBEK gorselini kimlik referansi olarak kullan.\n' +
+              '- Yuz yapisi, gozler, burun, dudaklar, cilt tonu birebir korunmali.\n' +
+              '- Yeni bir bebek uretme.\n' +
+              '- Sablondaki bebegi asla kopyalama.\n' +
+              '- Sablon gorsel sadece kompozisyon ve isik referansidir.\n' +
+              '- Cakisma durumunda her zaman KAYNAK BEBEK kimligini koru.\n' +
+              '- Kimlik degistirme, yuz yeniden uretme, stilize etme yasaktir.\n\n' +
+              'Ultra gercekci, yuksek cilt detayi, dogal newborn yumusakligi korunmali.\n' +
               'Return exactly one edited image. Do not return TEMPLATE image unchanged.',
           },
           {
