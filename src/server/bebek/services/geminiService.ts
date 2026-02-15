@@ -222,6 +222,8 @@ export const generateStyledPhotoWithTemplate = async (params: {
               'STRICT IDENTITY RULES:\n' +
               '- Preserve the SOURCE baby exact face.\n' +
               '- Keep original facial structure, head ratio, hairline, eyes, nose, lips, skin tone, expression structure, and baby proportions.\n' +
+              '- Preserve eye state exactly (open eyes must stay open, closed eyes must stay closed).\n' +
+              '- Preserve facial expression exactly (smile/neutral/crying must not change).\n' +
               '- Do NOT generate a new baby.\n' +
               '- Do NOT reinterpret the face.\n' +
               '- Do NOT beautify or stylize identity.\n' +
