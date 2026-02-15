@@ -178,6 +178,130 @@ export const generateStyledPhoto = async (params: {
   };
 };
 
+export const generateStyledPhotoWithTemplate = async (params: {
+  userImageBase64: string;
+  userMimeType: string;
+  templateImageBase64: string;
+  templateMimeType: string;
+  prompt: string;
+  model?: string;
+}) => {
+  const apiKey = getApiKey();
+  const {
+    userImageBase64,
+    userMimeType,
+    templateImageBase64,
+    templateMimeType,
+    prompt,
+  } = params;
+  const resolvedModel = params.model || process.env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image';
+
+  if (!apiKey) {
+    if (process.env.NODE_ENV !== 'production') {
+      logger.warn('GEMINI_API_KEY missing; returning source image as generated output in non-production');
+      return {
+        data: userImageBase64,
+        mimeType: userMimeType,
+        text: 'Mock response used because GEMINI_API_KEY is missing',
+      };
+    }
+    throw new Error('GEMINI_API_KEY is not configured');
+  }
+
+  const requestBody = {
+    contents: [
+      {
+        role: 'user',
+        parts: [
+          {
+            text:
+              `${prompt}\n\n` +
+              'Edit the user image according to the newborn template style. ' +
+              'Keep baby identity, face, skin tone, and core features consistent. ' +
+              'Use template only as composition/style reference.',
+          },
+          {
+            inlineData: {
+              data: userImageBase64,
+              mimeType: userMimeType,
+            },
+          },
+          {
+            inlineData: {
+              data: templateImageBase64,
+              mimeType: templateMimeType,
+            },
+          },
+        ],
+      },
+    ],
+    generationConfig: {
+      responseModalities: ['IMAGE', 'TEXT'],
+    },
+  };
+
+  const startedAt = Date.now();
+  logger.info(
+    {
+      model: resolvedModel,
+      promptLength: prompt.length,
+      userMimeType,
+      templateMimeType,
+      userImageBytesApprox: userImageBase64.length,
+      templateImageBytesApprox: templateImageBase64.length,
+    },
+    'Gemini newborn style generation request started'
+  );
+
+  let response;
+  try {
+    response = await axios.post<GeminiResponse>(
+      `${GEMINI_BASE_URL}/models/${resolvedModel}:generateContent?key=${apiKey}`,
+      requestBody
+    );
+  } catch (error) {
+    logger.error(
+      {
+        err: error,
+        model: resolvedModel,
+        elapsedMs: Date.now() - startedAt,
+      },
+      'Gemini newborn style generation request failed'
+    );
+    throw error;
+  }
+
+  const parts = response.data?.candidates?.flatMap(candidate => candidate?.content?.parts || []) || [];
+  const generatedPart = parts.find(part => part?.inlineData?.data);
+  if (!generatedPart?.inlineData?.data) {
+    logger.warn({ response: response.data }, 'Gemini newborn style generation returned no image part');
+    throw new Error('Generated image could not be extracted from provider response');
+  }
+
+  const textOutput = parts
+    .map(part => part?.text || '')
+    .join('')
+    .trim();
+
+  logger.info(
+    {
+      model: resolvedModel,
+      elapsedMs: Date.now() - startedAt,
+      candidateCount: response.data?.candidates?.length || 0,
+      outputMimeType: generatedPart.inlineData.mimeType || 'image/png',
+      outputBytesApprox: generatedPart.inlineData.data?.length || 0,
+      hasProviderText: Boolean(textOutput),
+    },
+    'Gemini newborn style generation completed'
+  );
+
+  return {
+    data: generatedPart.inlineData.data,
+    mimeType: generatedPart.inlineData.mimeType || 'image/png',
+    text: textOutput || undefined,
+  };
+};
+
 export const streamCoachResponse = async (params: {
   context: string;
   history: Array<{ role: string; content: string }>;
