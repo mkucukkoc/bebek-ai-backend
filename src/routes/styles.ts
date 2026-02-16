@@ -205,7 +205,7 @@ export const createStylesRouter = () => {
       logger.error({ err: error }, 'Style photo generation failed');
       const message = (error as Error)?.message || 'Style photo generation failed';
       const lowered = message.toLowerCase();
-      const isConfigIssue = lowered.includes('gemini_api_key');
+      const isConfigIssue = lowered.includes('gemini_api_key') || lowered.includes('fal_key');
       const status = isConfigIssue ? 503 : 500;
       res.status(status).json({
         error: isConfigIssue ? 'service_unavailable' : 'internal_error',
@@ -293,7 +293,7 @@ export const createStylesRouter = () => {
         requestId,
         promptLength: prompt.length,
         promptPreview: prompt.slice(0, 180),
-        model: requestedModel || process.env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image',
+        model: requestedModel || process.env.FAL_IMAGE_MODEL || 'fal-ai/bytedance/seedream/v4/edit',
         userImagePath: userInputPath,
         userImageBytes: userInputBuffer.length,
         templateUrl: resolvedTemplateUrl,
@@ -379,7 +379,7 @@ export const createStylesRouter = () => {
       logger.error({ err: error }, 'Newborn style photo generation failed');
       const message = (error as Error)?.message || 'Newborn style photo generation failed';
       const lowered = message.toLowerCase();
-      const isConfigIssue = lowered.includes('gemini_api_key');
+      const isConfigIssue = lowered.includes('gemini_api_key') || lowered.includes('fal_key');
       const status = isConfigIssue ? 503 : 500;
       res.status(status).json({
         error: isConfigIssue ? 'service_unavailable' : 'internal_error',

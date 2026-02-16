@@ -24,6 +24,7 @@
     "lint:fix": "eslint src/**/*.ts --fix"
   },
   "dependencies": {
+    "@fal-ai/client": "^1.9.1",
     "@sentry/node": "^10.15.0",
     "@sentry/profiling-node": "^10.15.0",
     "@types/axios": "^0.9.36",

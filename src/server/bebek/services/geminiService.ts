@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { fal } from '@fal-ai/client';
 import { logger } from '../../../utils/logger';
 import { BIG_SYSTEM_PROMPT } from '../constants';
 
@@ -9,8 +10,19 @@ const DEFAULT_GEMINI_CHAT_MODEL = process.env.GEMINI_CHAT_MODEL
 const DEFAULT_GEMINI_SUMMARY_MODEL = process.env.GEMINI_SUMMARY_MODEL
   || process.env.GEMINI_MODEL
   || 'gemini-2.5-flash';
+const DEFAULT_FAL_IMAGE_MODEL = process.env.FAL_IMAGE_MODEL || 'fal-ai/bytedance/seedream/v4/edit';
 
 const getApiKey = () => process.env.GEMINI_API_KEY || '';
+const getFalKey = () => process.env.FAL_KEY || process.env.FAL_API_KEY || '';
+
+let falConfigured = false;
+const ensureFalConfigured = () => {
+  if (falConfigured) return;
+  const key = getFalKey();
+  if (!key) return;
+  fal.config({ credentials: key });
+  falConfigured = true;
+};
 
 type GeminiResponse = {
   candidates?: Array<{
@@ -117,64 +129,50 @@ export const generateStyledPhoto = async (params: {
   prompt: string;
   model?: string;
 }) => {
-  const apiKey = getApiKey();
   const { imageBase64, mimeType, prompt } = params;
-  const resolvedModel = params.model || process.env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image';
+  const resolvedModel = params.model || DEFAULT_FAL_IMAGE_MODEL;
+  const falKey = getFalKey();
 
-  if (!apiKey) {
+  if (!falKey) {
     if (process.env.NODE_ENV !== 'production') {
-      logger.warn('GEMINI_API_KEY missing; returning source image as generated output in non-production');
+      logger.warn('FAL_KEY missing; returning source image as generated output in non-production');
       return {
         data: imageBase64,
         mimeType,
-        text: 'Mock response used because GEMINI_API_KEY is missing',
+        text: 'Mock response used because FAL_KEY is missing',
       };
     }
-    throw new Error('GEMINI_API_KEY is not configured');
+    throw new Error('FAL_KEY is not configured');
   }
 
-  const requestBody = {
-    contents: [
-      {
-        role: 'user',
-        parts: [
-          { text: prompt },
-          {
-            inlineData: {
-              data: imageBase64,
-              mimeType,
-            },
-          },
-        ],
-      },
-    ],
-    generationConfig: {
-      responseModalities: ['IMAGE', 'TEXT'],
+  ensureFalConfigured();
+  const sourceDataUri = `data:${mimeType};base64,${imageBase64}`;
+
+  logger.info({ model: resolvedModel, promptLength: prompt.length }, 'FAL style photo generation request started');
+  const result: any = await fal.subscribe(resolvedModel, {
+    input: {
+      prompt,
+      image_urls: [sourceDataUri],
+      image_size: 'portrait_16_9',
+      num_images: 1,
+      max_images: 1,
+      enhance_prompt_mode: 'standard',
+      enable_safety_checker: true,
     },
-  };
-
-  logger.info({ model: resolvedModel }, 'Gemini style photo generation request started');
-  const response = await axios.post<GeminiResponse>(
-    `${GEMINI_BASE_URL}/models/${resolvedModel}:generateContent?key=${apiKey}`,
-    requestBody
-  );
-
-  const parts = response.data?.candidates?.flatMap(candidate => candidate?.content?.parts || []) || [];
-  const generatedPart = parts.find(part => part?.inlineData?.data);
-  if (!generatedPart?.inlineData?.data) {
-    logger.warn({ response: response.data }, 'Gemini style photo generation returned no image part');
-    throw new Error('Generated image could not be extracted from provider response');
+    logs: true,
+  });
+  const outputUrl = result?.data?.images?.[0]?.url as string | undefined;
+  if (!outputUrl) {
+    throw new Error('FAL returned no output image URL');
   }
-
-  const textOutput = parts
-    .map(part => part?.text || '')
-    .join('')
-    .trim();
+  const outputResponse = await axios.get<ArrayBuffer>(outputUrl, { responseType: 'arraybuffer' });
+  const outputMimeType = (outputResponse.headers['content-type'] as string) || 'image/png';
+  const outputBase64 = Buffer.from(outputResponse.data as any).toString('base64');
 
   return {
-    data: generatedPart.inlineData.data,
-    mimeType: generatedPart.inlineData.mimeType || 'image/png',
-    text: textOutput || undefined,
+    data: outputBase64,
+    mimeType: outputMimeType,
+    text: undefined,
   };
 };
 
@@ -186,7 +184,6 @@ export const generateStyledPhotoWithTemplate = async (params: {
   prompt: string;
   model?: string;
 }) => {
-  const apiKey = getApiKey();
   const {
     userImageBase64,
     userMimeType,
@@ -194,91 +191,60 @@ export const generateStyledPhotoWithTemplate = async (params: {
     templateMimeType,
     prompt,
   } = params;
-  const resolvedModel = params.model || process.env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image';
+  const resolvedModel = params.model || DEFAULT_FAL_IMAGE_MODEL;
+  const falKey = getFalKey();
 
-  if (!apiKey) {
+  if (!falKey) {
     if (process.env.NODE_ENV !== 'production') {
-      logger.warn('GEMINI_API_KEY missing; returning source image as generated output in non-production');
+      logger.warn('FAL_KEY missing; returning source image as generated output in non-production');
       return {
         data: userImageBase64,
         mimeType: userMimeType,
-        text: 'Mock response used because GEMINI_API_KEY is missing',
+        text: 'Mock response used because FAL_KEY is missing',
       };
     }
-    throw new Error('GEMINI_API_KEY is not configured');
+    throw new Error('FAL_KEY is not configured');
   }
 
-  const requestBody = {
-    contents: [
-      {
-        role: 'user',
-        parts: [
-          {
-            text:
-              'TASK: Identity-preserving scene adaptation using two provided images.\n\n' +
-              'You are given:\n' +
-              '1) SOURCE IMAGE -> Contains the real baby. This is the ONLY identity reference.\n' +
-              '2) TEMPLATE IMAGE -> Defines pose, framing, camera distance, lighting and environment.\n' +
-              '3) SCENE BRIEF -> Additional style notes.\n\n' +
-              'SCENE BRIEF:\n' +
-              `${prompt}\n\n` +
-              'IMPORTANT:\n' +
-              'This is NOT a new baby generation task.\n' +
-              'This is an image editing and identity transfer task.\n\n' +
-              'GOAL:\n' +
-              'Place the SOURCE baby into the TEMPLATE scene while preserving 100% identity.\n\n' +
-              'STRICT IDENTITY PRESERVATION (HIGHEST PRIORITY):\n' +
-              '- Preserve exact facial structure.\n' +
-              '- Preserve head shape and proportions.\n' +
-              '- Preserve eyes, nose, lips exactly.\n' +
-              '- Preserve skin tone.\n' +
-              '- Preserve natural baby asymmetry.\n' +
-              '- Preserve expression geometry.\n' +
-              '- Preserve eye state exactly (open/closed must not change).\n' +
-              '- Do NOT generate a new baby.\n' +
-              '- Do NOT reinterpret the identity.\n' +
-              '- Do NOT beautify or stylize the face.\n' +
-              '- The baby must remain fully recognizable.\n\n' +
-              'SCENE ADAPTATION:\n' +
-              '- Match TEMPLATE pose and camera distance.\n' +
-              '- Match lighting direction and softness.\n' +
-              '- Match depth of field.\n' +
-              '- Maintain natural body proportions.\n' +
-              '- Keep realistic newborn skin texture.\n\n' +
-              'If any conflict occurs, ALWAYS prioritize SOURCE identity over scene styling.\n\n' +
-              'OUTPUT:\n' +
-              '- Ultra realistic.\n' +
-              '- Professional studio photograph look.\n' +
-              '- Return exactly one final image.',
-          },
-          {
-            text: 'SOURCE BABY IMAGE (PRIMARY IDENTITY REFERENCE):',
-          },
-          {
-            inlineData: {
-              data: userImageBase64,
-              mimeType: userMimeType,
-            },
-          },
-          {
-            text: 'TEMPLATE IMAGE (SCENE REFERENCE ONLY - NEVER COPY TEMPLATE BABY IDENTITY):',
-          },
-          {
-            inlineData: {
-              data: templateImageBase64,
-              mimeType: templateMimeType,
-            },
-          },
-        ],
-      },
-    ],
-    generationConfig: {
-      responseModalities: ['IMAGE', 'TEXT'],
-      temperature: 0,
-    },
-  };
-
-  const finalPromptText = requestBody.contents?.[0]?.parts?.find((part: any) => typeof part?.text === 'string')?.text || '';
+  ensureFalConfigured();
+  const finalPromptText =
+    'TASK: Identity-preserving scene adaptation using two provided images.\n\n' +
+    'You are given:\n' +
+    '1) SOURCE IMAGE -> Contains the real baby. This is the ONLY identity reference.\n' +
+    '2) TEMPLATE IMAGE -> Defines pose, framing, camera distance, lighting and environment.\n' +
+    '3) SCENE BRIEF -> Additional style notes.\n\n' +
+    'SCENE BRIEF:\n' +
+    `${prompt}\n\n` +
+    'IMPORTANT:\n' +
+    'This is NOT a new baby generation task.\n' +
+    'This is an image editing and identity transfer task.\n\n' +
+    'GOAL:\n' +
+    'Place the SOURCE baby into the TEMPLATE scene while preserving 100% identity.\n\n' +
+    'STRICT IDENTITY PRESERVATION (HIGHEST PRIORITY):\n' +
+    '- Preserve exact facial structure.\n' +
+    '- Preserve head shape and proportions.\n' +
+    '- Preserve eyes, nose, lips exactly.\n' +
+    '- Preserve skin tone.\n' +
+    '- Preserve natural baby asymmetry.\n' +
+    '- Preserve expression geometry.\n' +
+    '- Preserve eye state exactly (open/closed must not change).\n' +
+    '- Do NOT generate a new baby.\n' +
+    '- Do NOT reinterpret the identity.\n' +
+    '- Do NOT beautify or stylize the face.\n' +
+    '- The baby must remain fully recognizable.\n\n' +
+    'SCENE ADAPTATION:\n' +
+    '- Match TEMPLATE pose and camera distance.\n' +
+    '- Match lighting direction and softness.\n' +
+    '- Match depth of field.\n' +
+    '- Maintain natural body proportions.\n' +
+    '- Keep realistic newborn skin texture.\n\n' +
+    'If any conflict occurs, ALWAYS prioritize SOURCE identity over scene styling.\n\n' +
+    'OUTPUT:\n' +
+    '- Ultra realistic.\n' +
+    '- Professional studio photograph look.\n' +
+    '- Return exactly one final image.';
+  const sourceDataUri = `data:${userMimeType};base64,${userImageBase64}`;
+  const templateDataUri = `data:${templateMimeType};base64,${templateImageBase64}`;
   const startedAt = Date.now();
   logger.info(
     {
@@ -291,18 +257,26 @@ export const generateStyledPhotoWithTemplate = async (params: {
       userImageBytesApprox: userImageBase64.length,
       templateImageBytesApprox: templateImageBase64.length,
     },
-    'Gemini newborn style generation request started'
+    'FAL newborn style generation request started'
   );
 
-  let response;
+  let result: any;
   try {
-    response = await axios.post<GeminiResponse>(
-      `${GEMINI_BASE_URL}/models/${resolvedModel}:generateContent?key=${apiKey}`,
-      requestBody
-    );
+    result = await fal.subscribe(resolvedModel, {
+      input: {
+        prompt: finalPromptText,
+        image_urls: [sourceDataUri, templateDataUri],
+        image_size: 'portrait_16_9',
+        num_images: 1,
+        max_images: 1,
+        enhance_prompt_mode: 'standard',
+        enable_safety_checker: true,
+      },
+      logs: true,
+    });
   } catch (error: any) {
-    const providerStatus = error?.response?.status;
-    const providerData = error?.response?.data;
+    const providerStatus = error?.status;
+    const providerData = error?.body || error?.response?.data;
     logger.error(
       {
         err: error,
@@ -311,39 +285,35 @@ export const generateStyledPhotoWithTemplate = async (params: {
         providerStatus,
         providerData,
       },
-      'Gemini newborn style generation request failed'
+      'FAL newborn style generation request failed'
     );
     throw error;
   }
 
-  const parts = response.data?.candidates?.flatMap(candidate => candidate?.content?.parts || []) || [];
-  const generatedPart = parts.find(part => part?.inlineData?.data);
-  if (!generatedPart?.inlineData?.data) {
-    logger.warn({ response: response.data }, 'Gemini newborn style generation returned no image part');
-    throw new Error('Generated image could not be extracted from provider response');
+  const outputUrl = result?.data?.images?.[0]?.url as string | undefined;
+  if (!outputUrl) {
+    logger.warn({ result }, 'FAL newborn style generation returned no image URL');
+    throw new Error('Generated image could not be extracted from FAL response');
   }
-
-  const textOutput = parts
-    .map(part => part?.text || '')
-    .join('')
-    .trim();
+  const outputResponse = await axios.get<ArrayBuffer>(outputUrl, { responseType: 'arraybuffer' });
+  const outputMimeType = (outputResponse.headers['content-type'] as string) || 'image/png';
+  const outputBase64 = Buffer.from(outputResponse.data as any).toString('base64');
 
   logger.info(
     {
       model: resolvedModel,
       elapsedMs: Date.now() - startedAt,
-      candidateCount: response.data?.candidates?.length || 0,
-      outputMimeType: generatedPart.inlineData.mimeType || 'image/png',
-      outputBytesApprox: generatedPart.inlineData.data?.length || 0,
-      hasProviderText: Boolean(textOutput),
+      outputMimeType,
+      outputBytesApprox: outputBase64.length,
+      hasProviderText: false,
     },
-    'Gemini newborn style generation completed'
+    'FAL newborn style generation completed'
   );
 
   return {
-    data: generatedPart.inlineData.data,
-    mimeType: generatedPart.inlineData.mimeType || 'image/png',
-    text: textOutput || undefined,
+    data: outputBase64,
+    mimeType: outputMimeType,
+    text: undefined,
   };
 };
 
