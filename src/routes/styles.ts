@@ -33,6 +33,8 @@ export const createStylesRouter = () => {
     'Use the uploaded baby photo as the ONLY identity reference. Keep the same baby face and identity exactly: face shape, eyes, nose, lips, skin tone, and baby proportions must stay the same. Preserve eye state exactly (open stays open, closed stays closed) and keep the same facial expression. Do not create a new baby. Place this same baby naturally into the requested scene and style. Ultra-realistic family lifestyle photography.';
   const NEWBORN_IDENTITY_SUFFIX =
     'Use the uploaded baby photo as the ONLY identity reference. Keep the same baby face and identity exactly: face shape, eyes, nose, lips, skin tone, and baby proportions must stay the same. Preserve eye state exactly (open stays open, closed stays closed) and keep the same facial expression. Do not create a new baby. Place this same baby naturally into the requested newborn setup and style. Ultra-realistic newborn photography.';
+  const STUDIO_IDENTITY_SUFFIX =
+    'Use the uploaded baby photo as the ONLY identity reference. Keep the same baby face and identity exactly: face shape, eyes, nose, lips, skin tone, and baby proportions must stay the same. Preserve eye state exactly (open stays open, closed stays closed) and keep the same facial expression. Do not create a new baby. Place this same baby naturally into the requested studio scene and style. Ultra-realistic newborn photography.';
 
   const STYLE_PROMPT_BY_ID: Record<string, string> = {
     l1: `Vertical 9:16 elegant family portrait with baby, luxury classic interior, neutral beige tones, soft cinematic lighting, parents wearing modern formal clothing, baby centered, high fashion lifestyle photography, photorealistic, editorial style ${LIFESTYLE_IDENTITY_SUFFIX}`,
@@ -47,6 +49,7 @@ export const createStylesRouter = () => {
     l10: `Vertical family lifestyle photo of parents walking in a green park holding toddler while baby is in stroller, golden hour sunlight, natural candid atmosphere, warm cinematic tones ${LIFESTYLE_IDENTITY_SUFFIX}`,
     l11: `Vertical lifestyle family scene with parents sitting on floor playing with toddler while baby lies on soft blanket, bright playroom environment, cozy candid mood ${LIFESTYLE_IDENTITY_SUFFIX}`,
     l12: `Vertical 9:16 family birthday celebration scene, baby near cake, parents and child smiling together, warm festive lighting, candid lifestyle photography ${LIFESTYLE_IDENTITY_SUFFIX}`,
+    s1: `Gokkusagi konseptinde profesyonel studio cekimi, temiz kompozisyon, vivid colors. ${STUDIO_IDENTITY_SUFFIX}`,
     n1: `Vertical 9:16 newborn baby sleeping wrapped in deep navy swaddle, lying on a crescent moon prop with small star decorations, soft studio lighting, dreamy night sky background, professional newborn photography style, pastel cinematic tones, ultra realistic, cozy atmosphere ${NEWBORN_IDENTITY_SUFFIX}`,
     n2: `Vertical portrait 9:16 newborn baby wrapped in white fabric, lying on fluffy soft white fur background, minimalistic newborn photography studio setup, soft diffused lighting, clean white aesthetic, photorealistic, gentle shadows, calm peaceful mood ${NEWBORN_IDENTITY_SUFFIX}`,
     n3: `Vertical 9:16 sleeping newborn baby wrapped in beige blanket, warm cozy studio environment, soft neutral background tones, bakery-style warm aesthetic, natural soft light, realistic baby photography, gentle depth of field, peaceful mood ${NEWBORN_IDENTITY_SUFFIX}`,
@@ -202,7 +205,10 @@ export const createStylesRouter = () => {
         return;
       }
       if (!stylePrompt) {
-        res.status(400).json({ error: 'invalid_request', message: 'A valid style_id is required' });
+        res.status(400).json({
+          error: 'invalid_request',
+          message: `A valid style_id is required (received: ${styleId || 'none'})`,
+        });
         return;
       }
 
@@ -259,7 +265,10 @@ export const createStylesRouter = () => {
       const requestedModel = typeof req.body?.model === 'string' ? req.body.model : undefined;
 
       if (!styleId || !styleId.startsWith('n') || !baseStylePrompt) {
-        res.status(400).json({ error: 'invalid_request', message: 'A valid newborn style_id is required' });
+        res.status(400).json({
+          error: 'invalid_request',
+          message: `A valid newborn style_id is required (received: ${styleId || 'none'})`,
+        });
         return;
       }
       if (!fileRequest.file && !userImageSource) {
