@@ -24,6 +24,28 @@ const ensureFalConfigured = () => {
   falConfigured = true;
 };
 
+const createFalDebugId = () => `fal-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const summarizeImageUrl = (url: string) => {
+  if (typeof url !== 'string') return { kind: 'unknown' };
+  if (url.startsWith('data:')) {
+    const commaIndex = url.indexOf(',');
+    const header = commaIndex > 0 ? url.slice(0, commaIndex) : url.slice(0, 80);
+    const payloadLength = commaIndex > 0 ? url.length - commaIndex - 1 : 0;
+    return {
+      kind: 'data_uri',
+      header,
+      payloadLength,
+      totalLength: url.length,
+    };
+  }
+  return {
+    kind: 'url',
+    preview: url.slice(0, 180),
+    totalLength: url.length,
+  };
+};
+
 type GeminiResponse = {
   candidates?: Array<{
     content?: {
@@ -147,27 +169,86 @@ export const generateStyledPhoto = async (params: {
 
   ensureFalConfigured();
   const sourceDataUri = `data:${mimeType};base64,${imageBase64}`;
+  const falDebugId = createFalDebugId();
+  const falInput = {
+    prompt,
+    image_urls: [sourceDataUri],
+    image_size: 'portrait_16_9' as const,
+    num_images: 1,
+    max_images: 1,
+    enhance_prompt_mode: 'standard' as const,
+    enable_safety_checker: true,
+  };
 
-  logger.info({ model: resolvedModel, promptLength: prompt.length }, 'FAL style photo generation request started');
-  const result: any = await fal.subscribe(resolvedModel, {
-    input: {
-      prompt,
-      image_urls: [sourceDataUri],
-      image_size: 'portrait_16_9',
-      num_images: 1,
-      max_images: 1,
-      enhance_prompt_mode: 'standard',
-      enable_safety_checker: true,
+  logger.info(
+    {
+      falDebugId,
+      model: resolvedModel,
+      promptLength: prompt.length,
+      promptPreview: prompt.slice(0, 220),
+      imageCount: falInput.image_urls.length,
+      imageSummaries: falInput.image_urls.map(summarizeImageUrl),
+      input: {
+        image_size: falInput.image_size,
+        num_images: falInput.num_images,
+        max_images: falInput.max_images,
+        enhance_prompt_mode: falInput.enhance_prompt_mode,
+        enable_safety_checker: falInput.enable_safety_checker,
+      },
+      falConfigured,
     },
+    'FAL style photo generation request prepared'
+  );
+  logger.info({ falDebugId, model: resolvedModel }, 'FAL style photo generation submit started');
+  const result: any = await fal.subscribe(resolvedModel, {
+    input: falInput,
     logs: true,
+    onQueueUpdate: (update: any) => {
+      logger.info(
+        {
+          falDebugId,
+          model: resolvedModel,
+          status: update?.status,
+          queuePosition: update?.queue_position ?? null,
+          logs: Array.isArray(update?.logs)
+            ? update.logs.map((log: any) => ({
+              level: log?.level || null,
+              message: log?.message || null,
+              timestamp: log?.timestamp || null,
+            }))
+            : [],
+        },
+        'FAL style photo generation queue update'
+      );
+    },
   });
+  logger.info(
+    {
+      falDebugId,
+      model: resolvedModel,
+      requestId: result?.requestId || result?.request_id || null,
+      rawResult: result,
+    },
+    'FAL style photo generation response received'
+  );
   const outputUrl = result?.data?.images?.[0]?.url as string | undefined;
   if (!outputUrl) {
+    logger.error({ falDebugId, result }, 'FAL style photo generation missing output URL');
     throw new Error('FAL returned no output image URL');
   }
+  logger.info({ falDebugId, outputUrlPreview: outputUrl.slice(0, 220), outputUrlLength: outputUrl.length }, 'FAL style photo output download started');
   const outputResponse = await axios.get<ArrayBuffer>(outputUrl, { responseType: 'arraybuffer' });
   const outputMimeType = (outputResponse.headers['content-type'] as string) || 'image/png';
   const outputBase64 = Buffer.from(outputResponse.data as any).toString('base64');
+  logger.info(
+    {
+      falDebugId,
+      outputMimeType,
+      outputBytesApprox: outputBase64.length,
+      responseHeaders: outputResponse.headers,
+    },
+    'FAL style photo output downloaded'
+  );
 
   return {
     data: outputBase64,
@@ -179,16 +260,12 @@ export const generateStyledPhoto = async (params: {
 export const generateStyledPhotoWithTemplate = async (params: {
   userImageBase64: string;
   userMimeType: string;
-  templateImageBase64: string;
-  templateMimeType: string;
   prompt: string;
   model?: string;
 }) => {
   const {
     userImageBase64,
     userMimeType,
-    templateImageBase64,
-    templateMimeType,
     prompt,
   } = params;
   const resolvedModel = params.model || DEFAULT_FAL_IMAGE_MODEL;
@@ -208,10 +285,10 @@ export const generateStyledPhotoWithTemplate = async (params: {
 
   ensureFalConfigured();
   const finalPromptText =
-    'TASK: Identity-preserving scene adaptation using two provided images.\n\n' +
+    'TASK: Identity-preserving scene adaptation using source image and style prompt.\n\n' +
     'You are given:\n' +
     '1) SOURCE IMAGE -> Contains the real baby. This is the ONLY identity reference.\n' +
-    '2) TEMPLATE IMAGE -> Defines pose, framing, camera distance, lighting and environment.\n' +
+    '2) STYLE PROMPT -> Defines desired pose, framing, camera distance, lighting and environment.\n' +
     '3) SCENE BRIEF -> Additional style notes.\n\n' +
     'SCENE BRIEF:\n' +
     `${prompt}\n\n` +
@@ -233,7 +310,7 @@ export const generateStyledPhotoWithTemplate = async (params: {
     '- Do NOT beautify or stylize the face.\n' +
     '- The baby must remain fully recognizable.\n\n' +
     'SCENE ADAPTATION:\n' +
-    '- Match TEMPLATE pose and camera distance.\n' +
+    '- Match requested pose and camera distance from scene brief.\n' +
     '- Match lighting direction and softness.\n' +
     '- Match depth of field.\n' +
     '- Maintain natural body proportions.\n' +
@@ -244,41 +321,80 @@ export const generateStyledPhotoWithTemplate = async (params: {
     '- Professional studio photograph look.\n' +
     '- Return exactly one final image.';
   const sourceDataUri = `data:${userMimeType};base64,${userImageBase64}`;
-  const templateDataUri = `data:${templateMimeType};base64,${templateImageBase64}`;
+  const falDebugId = createFalDebugId();
+  const falInput = {
+    prompt: finalPromptText,
+    image_urls: [sourceDataUri],
+    image_size: 'portrait_16_9' as const,
+    num_images: 1,
+    max_images: 1,
+    enhance_prompt_mode: 'standard' as const,
+    enable_safety_checker: true,
+  };
   const startedAt = Date.now();
   logger.info(
     {
+      falDebugId,
       model: resolvedModel,
       promptLength: prompt.length,
       finalPromptLength: finalPromptText.length,
       finalPromptPreview: finalPromptText.slice(0, 250),
       userMimeType,
-      templateMimeType,
       userImageBytesApprox: userImageBase64.length,
-      templateImageBytesApprox: templateImageBase64.length,
+      imageCount: falInput.image_urls.length,
+      imageSummaries: falInput.image_urls.map(summarizeImageUrl),
+      input: {
+        image_size: falInput.image_size,
+        num_images: falInput.num_images,
+        max_images: falInput.max_images,
+        enhance_prompt_mode: falInput.enhance_prompt_mode,
+        enable_safety_checker: falInput.enable_safety_checker,
+      },
+      falConfigured,
     },
-    'FAL newborn style generation request started'
+    'FAL newborn style generation request prepared'
   );
 
   let result: any;
   try {
+    logger.info({ falDebugId, model: resolvedModel }, 'FAL newborn style generation submit started');
     result = await fal.subscribe(resolvedModel, {
-      input: {
-        prompt: finalPromptText,
-        image_urls: [sourceDataUri, templateDataUri],
-        image_size: 'portrait_16_9',
-        num_images: 1,
-        max_images: 1,
-        enhance_prompt_mode: 'standard',
-        enable_safety_checker: true,
-      },
+      input: falInput,
       logs: true,
+      onQueueUpdate: (update: any) => {
+        logger.info(
+          {
+            falDebugId,
+            model: resolvedModel,
+            status: update?.status,
+            queuePosition: update?.queue_position ?? null,
+            logs: Array.isArray(update?.logs)
+              ? update.logs.map((log: any) => ({
+                level: log?.level || null,
+                message: log?.message || null,
+                timestamp: log?.timestamp || null,
+              }))
+              : [],
+          },
+          'FAL newborn style generation queue update'
+        );
+      },
     });
+    logger.info(
+      {
+        falDebugId,
+        model: resolvedModel,
+        requestId: result?.requestId || result?.request_id || null,
+        rawResult: result,
+      },
+      'FAL newborn style generation response received'
+    );
   } catch (error: any) {
     const providerStatus = error?.status;
     const providerData = error?.body || error?.response?.data;
     logger.error(
       {
+        falDebugId,
         err: error,
         model: resolvedModel,
         elapsedMs: Date.now() - startedAt,
@@ -292,20 +408,30 @@ export const generateStyledPhotoWithTemplate = async (params: {
 
   const outputUrl = result?.data?.images?.[0]?.url as string | undefined;
   if (!outputUrl) {
-    logger.warn({ result }, 'FAL newborn style generation returned no image URL');
+    logger.warn({ falDebugId, result }, 'FAL newborn style generation returned no image URL');
     throw new Error('Generated image could not be extracted from FAL response');
   }
+  logger.info(
+    {
+      falDebugId,
+      outputUrlPreview: outputUrl.slice(0, 220),
+      outputUrlLength: outputUrl.length,
+    },
+    'FAL newborn style output download started'
+  );
   const outputResponse = await axios.get<ArrayBuffer>(outputUrl, { responseType: 'arraybuffer' });
   const outputMimeType = (outputResponse.headers['content-type'] as string) || 'image/png';
   const outputBase64 = Buffer.from(outputResponse.data as any).toString('base64');
 
   logger.info(
     {
+      falDebugId,
       model: resolvedModel,
       elapsedMs: Date.now() - startedAt,
       outputMimeType,
       outputBytesApprox: outputBase64.length,
       hasProviderText: false,
+      responseHeaders: outputResponse.headers,
     },
     'FAL newborn style generation completed'
   );
