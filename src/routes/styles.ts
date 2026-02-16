@@ -29,6 +29,45 @@ export const createStylesRouter = () => {
     return 'jpg';
   };
 
+  const LIFESTYLE_IDENTITY_SUFFIX =
+    'Use the uploaded baby photo as the ONLY identity reference. Keep the same baby face and identity exactly: face shape, eyes, nose, lips, skin tone, and baby proportions must stay the same. Preserve eye state exactly (open stays open, closed stays closed) and keep the same facial expression. Do not create a new baby. Place this same baby naturally into the requested scene and style. Ultra-realistic family lifestyle photography.';
+  const NEWBORN_IDENTITY_SUFFIX =
+    'Use the uploaded baby photo as the ONLY identity reference. Keep the same baby face and identity exactly: face shape, eyes, nose, lips, skin tone, and baby proportions must stay the same. Preserve eye state exactly (open stays open, closed stays closed) and keep the same facial expression. Do not create a new baby. Place this same baby naturally into the requested newborn setup and style. Ultra-realistic newborn photography.';
+
+  const STYLE_PROMPT_BY_ID: Record<string, string> = {
+    l1: `Vertical 9:16 elegant family portrait with baby, luxury classic interior, neutral beige tones, soft cinematic lighting, parents wearing modern formal clothing, baby centered, high fashion lifestyle photography, photorealistic, editorial style ${LIFESTYLE_IDENTITY_SUFFIX}`,
+    l2: `Vertical portrait 9:16 happy family holding baby in modern living room, warm natural light, emotional candid moment, lifestyle photography, realistic skin tones, soft focus background, premium editorial look, cozy home atmosphere ${LIFESTYLE_IDENTITY_SUFFIX}`,
+    l3: `Vertical 9:16 baby in stroller with parents walking in colorful neon city night background, cinematic urban atmosphere, glowing lights, realistic street photography style, vibrant colors, shallow depth of field, modern lifestyle aesthetic ${LIFESTYLE_IDENTITY_SUFFIX}`,
+    l4: `Vertical portrait 9:16 mother holding baby while sitting at a stylish cafe table, warm natural light, modern urban lifestyle photography, cinematic depth of field, realistic skin tones ${LIFESTYLE_IDENTITY_SUFFIX}`,
+    l5: `Vertical 9:16 baby walking with parent in a green park during golden hour sunset, cinematic warm lighting, lifestyle photography aesthetic, natural candid moment ${LIFESTYLE_IDENTITY_SUFFIX}`,
+    l6: `Vertical portrait baby walking with parents along a calm beach shoreline, soft pastel sunset sky, natural candid lifestyle photo, photorealistic, airy composition ${LIFESTYLE_IDENTITY_SUFFIX}`,
+    l7: `Vertical 9:16 baby sitting near glass balcony with city skyline background, modern apartment lifestyle, soft daylight, minimal luxury aesthetic ${LIFESTYLE_IDENTITY_SUFFIX}`,
+    l8: `Vertical 9:16 close-up baby and parent selfie style shot, handheld camera feeling, vlog lifestyle aesthetic, natural candid expression, cinematic mobile photography look ${LIFESTYLE_IDENTITY_SUFFIX}`,
+    l9: `Vertical 9:16 lifestyle family portrait with mother, father, toddler child and baby sitting together on a cozy sofa, modern Scandinavian living room, soft natural daylight, candid happy moment, ultra realistic photography, cinematic depth of field ${LIFESTYLE_IDENTITY_SUFFIX}`,
+    l10: `Vertical family lifestyle photo of parents walking in a green park holding toddler while baby is in stroller, golden hour sunlight, natural candid atmosphere, warm cinematic tones ${LIFESTYLE_IDENTITY_SUFFIX}`,
+    l11: `Vertical lifestyle family scene with parents sitting on floor playing with toddler while baby lies on soft blanket, bright playroom environment, cozy candid mood ${LIFESTYLE_IDENTITY_SUFFIX}`,
+    l12: `Vertical 9:16 family birthday celebration scene, baby near cake, parents and child smiling together, warm festive lighting, candid lifestyle photography ${LIFESTYLE_IDENTITY_SUFFIX}`,
+    n1: `Vertical 9:16 newborn baby sleeping wrapped in deep navy swaddle, lying on a crescent moon prop with small star decorations, soft studio lighting, dreamy night sky background, professional newborn photography style, pastel cinematic tones, ultra realistic, cozy atmosphere ${NEWBORN_IDENTITY_SUFFIX}`,
+    n2: `Vertical portrait 9:16 newborn baby wrapped in white fabric, lying on fluffy soft white fur background, minimalistic newborn photography studio setup, soft diffused lighting, clean white aesthetic, photorealistic, gentle shadows, calm peaceful mood ${NEWBORN_IDENTITY_SUFFIX}`,
+    n3: `Vertical 9:16 sleeping newborn baby wrapped in beige blanket, warm cozy studio environment, soft neutral background tones, bakery-style warm aesthetic, natural soft light, realistic baby photography, gentle depth of field, peaceful mood ${NEWBORN_IDENTITY_SUFFIX}`,
+    n4: `Vertical 9:16 newborn baby sleeping wrapped in soft pastel fabric, lying on fluffy cloud-like pillows, dreamy soft studio lighting, minimal pastel background, professional newborn photography, ultra realistic skin detail, peaceful mood, shallow depth of field ${NEWBORN_IDENTITY_SUFFIX}`,
+    n5: `Vertical 9:16 newborn baby sleeping inside a soft floral nest, pastel flowers around, bright soft daylight studio lighting, spring aesthetic, ultra realistic newborn photography, gentle color palette ${NEWBORN_IDENTITY_SUFFIX}`,
+    n6: `Vertical portrait newborn baby wrapped in soft cream blanket, lying next to plush teddy bear, cozy warm studio environment, cinematic soft light, high detail newborn photography style ${NEWBORN_IDENTITY_SUFFIX}`,
+    n7: `Vertical 9:16 newborn baby sleeping on soft fabric with warm golden sunset lighting effect, cinematic glow, dreamy warm tones, realistic newborn portrait, professional studio composition ${NEWBORN_IDENTITY_SUFFIX}`,
+    n8: `Vertical newborn baby sleeping inside a small vintage basket, soft knitted blanket, warm neutral background, rustic newborn photography style, ultra detailed realistic baby portrait ${NEWBORN_IDENTITY_SUFFIX}`,
+    n9: `Vertical 9:16 newborn baby sleeping wrapped in deep navy fabric floating in a dreamy galaxy background, soft stars and nebula colors, cinematic cosmic lighting, ultra realistic newborn photography, magical atmosphere, high detail ${NEWBORN_IDENTITY_SUFFIX}`,
+    n10: `Vertical newborn baby sleeping on oversized plush toys, miniature toy world concept, colorful soft environment, dreamy cinematic lighting, ultra cute photorealistic newborn photography ${NEWBORN_IDENTITY_SUFFIX}`,
+    n11: `Vertical 9:16 newborn baby wrapped in pastel blanket floating with soft balloons, airy dreamy studio background, soft sunlight glow, high-end newborn photography style ${NEWBORN_IDENTITY_SUFFIX}`,
+    n12: `Vertical newborn baby sleeping on an open fairy tale book, magical soft glow, storybook fantasy style, warm cinematic lighting, whimsical newborn portrait ${NEWBORN_IDENTITY_SUFFIX}`,
+    n13: `Vertical 9:16 newborn baby sleeping on soft neutral desert-toned fabrics, minimal boho aesthetic, warm earthy colors, cinematic soft shadows, luxury newborn photography ${NEWBORN_IDENTITY_SUFFIX}`,
+    n14: `Vertical newborn baby styled as tiny astronaut, soft space-themed background, cinematic lighting, ultra cute futuristic newborn portrait, photorealistic ${NEWBORN_IDENTITY_SUFFIX}`,
+  };
+
+  const resolveStylePrompt = (styleId: string | null) => {
+    if (!styleId) return null;
+    return STYLE_PROMPT_BY_ID[styleId] || null;
+  };
+
   const normalizeKey = (value: string) =>
     value
       .normalize('NFKD')
@@ -151,33 +190,33 @@ export const createStylesRouter = () => {
         return;
       }
 
-      const prompt = typeof req.body?.prompt === 'string' ? req.body.prompt.trim() : '';
       const styleId = typeof req.body?.style_id === 'string' ? req.body.style_id : null;
       const requestId = typeof req.body?.request_id === 'string'
         ? req.body.request_id
         : (req.header('x-request-id') || null);
       const requestedModel = typeof req.body?.model === 'string' ? req.body.model : undefined;
+      const stylePrompt = resolveStylePrompt(styleId);
 
       if (!fileRequest.file) {
         res.status(400).json({ error: 'invalid_request', message: 'image file is required' });
         return;
       }
-      if (!prompt) {
-        res.status(400).json({ error: 'invalid_request', message: 'prompt is required' });
+      if (!stylePrompt) {
+        res.status(400).json({ error: 'invalid_request', message: 'A valid style_id is required' });
         return;
       }
 
       const generated = await generateStyledPhoto({
         imageBase64: fileRequest.file.buffer.toString('base64'),
         mimeType: fileRequest.file.mimetype || 'image/jpeg',
-        prompt,
+        prompt: stylePrompt,
         model: requestedModel,
       });
 
       res.json({
         request_id: requestId,
         style_id: styleId,
-        prompt,
+        prompt: stylePrompt,
         image: {
           data: generated.data,
           mimeType: generated.mimeType,
@@ -208,8 +247,8 @@ export const createStylesRouter = () => {
       }
 
       const userId = authReq.user.id;
-      const prompt = typeof req.body?.prompt === 'string' ? req.body.prompt.trim() : '';
       const styleId = typeof req.body?.style_id === 'string' ? req.body.style_id : null;
+      const baseStylePrompt = resolveStylePrompt(styleId);
       const userImageSource =
         typeof req.body?.user_image_url === 'string'
           ? req.body.user_image_url
@@ -219,8 +258,8 @@ export const createStylesRouter = () => {
         : (req.header('x-request-id') || null);
       const requestedModel = typeof req.body?.model === 'string' ? req.body.model : undefined;
 
-      if (!prompt) {
-        res.status(400).json({ error: 'invalid_request', message: 'prompt is required' });
+      if (!styleId || !styleId.startsWith('n') || !baseStylePrompt) {
+        res.status(400).json({ error: 'invalid_request', message: 'A valid newborn style_id is required' });
         return;
       }
       if (!fileRequest.file && !userImageSource) {
@@ -259,14 +298,17 @@ export const createStylesRouter = () => {
         res.status(400).json({ error: 'invalid_request', message: 'User image could not be loaded' });
         return;
       }
-      const promptForGeneration = prompt;
+      const promptForGeneration =
+        `Transform the person in the photo into an adorable baby. ${baseStylePrompt}. ` +
+        'Focus on maintaining facial identity while applying baby characteristics (larger eyes, rounder face, soft skin). ' +
+        'High resolution, professional photography.';
 
       logger.info({
         userId,
         styleId,
         requestId,
-        promptLength: prompt.length,
-        promptPreview: prompt.slice(0, 180),
+        basePromptLength: baseStylePrompt.length,
+        basePromptPreview: baseStylePrompt.slice(0, 180),
         promptForGenerationLength: promptForGeneration.length,
         promptForGenerationPreview: promptForGeneration.slice(0, 220),
         model: requestedModel || process.env.FAL_IMAGE_MODEL || 'fal-ai/bytedance/seedream/v4/edit',
@@ -307,7 +349,7 @@ export const createStylesRouter = () => {
           id: recordId,
           styleType: 'yenidogan',
           styleId,
-          prompt,
+          prompt: promptForGeneration,
           requestId,
           inputImagePath: userInputPath,
           inputImageUrl: inputUrl,
@@ -332,7 +374,7 @@ export const createStylesRouter = () => {
         request_id: requestId,
         style_id: styleId,
         user_id: userId,
-        prompt,
+        prompt: promptForGeneration,
         input: {
           path: userInputPath,
           url: inputUrl,
