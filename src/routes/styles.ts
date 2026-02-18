@@ -28,6 +28,11 @@ export const createStylesRouter = () => {
     if (mime.includes('heic')) return 'heic';
     return 'jpg';
   };
+  const extFromVideoMime = (mime: string) => {
+    if (mime.includes('webm')) return 'webm';
+    if (mime.includes('quicktime') || mime.includes('mov')) return 'mov';
+    return 'mp4';
+  };
 
   const LIFESTYLE_IDENTITY_SUFFIX =
     'Use the uploaded baby photo as the ONLY identity reference. Keep the same baby face and identity exactly: face shape, eyes, nose, lips, skin tone, and baby proportions must stay the same. Preserve eye state exactly (open stays open, closed stays closed) and keep the same facial expression. Do not create a new baby. Place this same baby naturally into the requested scene and style. Ultra-realistic family lifestyle photography.';
@@ -177,6 +182,39 @@ export const createStylesRouter = () => {
     }
 
     throw new Error('Source image could not be resolved from storage/url');
+  };
+
+  const downloadVideoFromSource = async (source: string) => {
+    if (!source.startsWith('http://') && !source.startsWith('https://')) {
+      throw new Error('Video source must be a valid URL');
+    }
+
+    const headers: Record<string, string> = {};
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(source);
+    } catch {
+      throw new Error('Video source URL could not be parsed');
+    }
+
+    // Gemini file download URLs require API key in header.
+    if (parsedUrl.hostname === 'generativelanguage.googleapis.com') {
+      const apiKey = process.env.GEMINI_API_KEY || '';
+      if (!apiKey) {
+        throw new Error('GEMINI_API_KEY is required to download Gemini video files');
+      }
+      headers['x-goog-api-key'] = apiKey;
+    }
+
+    const response = await fetch(source, { headers });
+    if (!response.ok) {
+      throw new Error(`Unable to download generated video (${response.status})`);
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const contentType = (response.headers.get('content-type') || '').toLowerCase().trim();
+    const mimeType = contentType.startsWith('video/') ? contentType : 'video/mp4';
+    return { buffer: Buffer.from(arrayBuffer), mimeType };
   };
 
   const getSignedOrPublicUrl = async (filePath: string) => {
@@ -482,6 +520,36 @@ export const createStylesRouter = () => {
       const generatedId = randomUUID();
       const now = Date.now();
       const inputPath = resolveStorageObjectPath(userImageSource) || `users/${userId}/uploads/video/${now}-remote.jpg`;
+      const bucket: any = storage.bucket();
+      let outputVideoUrl = providerResult.outputVideoUrl;
+      let outputVideoPath: string | null = null;
+      let outputMimeType = 'video/mp4';
+
+      // When provider returns a real generated video file, persist it under user storage.
+      if (!providerResult.usedFallback) {
+        const downloadedVideo = await downloadVideoFromSource(providerResult.outputVideoUrl);
+        outputMimeType = downloadedVideo.mimeType || 'video/mp4';
+        const videoExt = extFromVideoMime(outputMimeType);
+        outputVideoPath = `users/${userId}/generated/video/${generatedId}.${videoExt}`;
+
+        await bucket.file(outputVideoPath).save(downloadedVideo.buffer, {
+          contentType: outputMimeType,
+          resumable: false,
+          metadata: {
+            cacheControl: 'public,max-age=31536000',
+          },
+        });
+        outputVideoUrl = await getSignedOrPublicUrl(outputVideoPath);
+
+        logger.info({
+          requestId,
+          step: 'video_generate_output_uploaded',
+          generatedId,
+          outputVideoPath,
+          outputBytes: downloadedVideo.buffer.length,
+          outputMimeType,
+        }, 'Generated video uploaded to user storage');
+      }
 
       await db
         .collection('users')
@@ -495,9 +563,10 @@ export const createStylesRouter = () => {
           requestId,
           inputImagePath: inputPath,
           inputImageUrl: userImageSource,
-          outputVideoUrl: providerResult.outputVideoUrl,
+          outputVideoUrl,
+          outputVideoPath,
           outputImageUrl: null,
-          outputMimeType: 'video/mp4',
+          outputMimeType,
           providerText: providerResult.providerText || null,
           providerStatus: providerResult.providerStatus || null,
           providerRaw: providerResult.providerRaw || null,
@@ -523,9 +592,9 @@ export const createStylesRouter = () => {
         },
         output: {
           id: generatedId,
-          path: null,
-          url: providerResult.outputVideoUrl,
-          mimeType: 'video/mp4',
+          path: outputVideoPath,
+          url: outputVideoUrl,
+          mimeType: outputMimeType,
         },
         provider_text: providerResult.providerText || null,
       });
@@ -574,6 +643,8 @@ export const createStylesRouter = () => {
           prompt: data?.prompt || null,
           outputImageUrl: data?.outputImageUrl || null,
           outputImagePath: data?.outputImagePath || null,
+          outputVideoUrl: data?.outputVideoUrl || null,
+          outputVideoPath: data?.outputVideoPath || null,
           outputMimeType: data?.outputMimeType || null,
           inputImageUrl: data?.inputImageUrl || null,
           createdAt: createdAtIso,
@@ -611,7 +682,8 @@ export const createStylesRouter = () => {
 
       const data = snap.data() as any;
       const bucket: any = storage.bucket();
-      const paths = [data?.outputImagePath, data?.inputImagePath].filter(Boolean) as string[];
+      const paths = [data?.outputImagePath, data?.outputVideoPath, data?.inputImagePath]
+        .filter(Boolean) as string[];
 
       for (const path of paths) {
         try {
