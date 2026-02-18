@@ -611,6 +611,12 @@ export const generateStyledVideoWithVeo = async (params: {
   const resolvedModel = params.model || DEFAULT_FAL_VIDEO_MODEL;
   const falKey = getFalKey();
   const videoRequestId = requestId || `video-${Date.now()}`;
+  const faceSwapPrompt =
+    'Perform a complete baby transformation in the output video. ' +
+    'Do NOT keep the original adult head/hair identity from the target clip. ' +
+    'Replace the full head region (face + hairline + hair + head proportions) with the source baby identity so the result is fully baby-like and consistent in every frame. ' +
+    'Keep temporal consistency, natural skin blending, and stable facial landmarks. ' +
+    'Also update the scene to a baby-themed environment (nursery, soft pastel decor, toys, warm cinematic baby background) while keeping realistic motion continuity.';
 
   logger.info(
     {
@@ -648,6 +654,7 @@ export const generateStyledVideoWithVeo = async (params: {
     const falInput = {
       source_face_url: userImageUrl,
       target_video_url: referenceVideoUrl,
+      prompt: faceSwapPrompt,
     };
     logger.info(
       {
