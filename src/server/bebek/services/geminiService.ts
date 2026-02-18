@@ -660,14 +660,17 @@ const pollLongRunningOperation = async (params: {
   veoRequestId: string;
 }) => {
   const { apiKey, operationName, veoRequestId } = params;
-  const maxPollCount = Number(process.env.GEMINI_VEO_POLL_MAX || 20);
+  const maxPollCount = Number(process.env.GEMINI_VEO_POLL_MAX || 0); // 0 => no poll count limit
   const pollIntervalMs = Number(process.env.GEMINI_VEO_POLL_INTERVAL_MS || 3000);
+  const maxTotalMs = Number(process.env.GEMINI_VEO_MAX_TOTAL_WAIT_MS || 0); // 0 => no total timeout
+  const startedAt = Date.now();
   const opName = operationName.startsWith('operations/')
     ? operationName
     : operationName.replace(/^\/+/, '');
   const opUrl = `${GEMINI_BASE_URL}/${opName}`;
 
-  for (let attempt = 1; attempt <= maxPollCount; attempt += 1) {
+  let attempt = 1;
+  while (true) {
     const response = await axios.get(opUrl, {
       headers: { 'x-goog-api-key': apiKey },
       timeout: Number(process.env.GEMINI_VEO_TIMEOUT_MS || 120000),
@@ -681,6 +684,7 @@ const pollLongRunningOperation = async (params: {
         step: 'veo_operation_poll_response',
         operationName: opName,
         pollAttempt: attempt,
+        elapsedMs: Date.now() - startedAt,
         status: response.status,
         done: Boolean(pollPayload?.done),
         data: pollPayload,
@@ -704,14 +708,25 @@ const pollLongRunningOperation = async (params: {
       };
     }
 
-    await sleep(pollIntervalMs);
-  }
+    if (maxPollCount > 0 && attempt >= maxPollCount) {
+      return {
+        ok: false,
+        status: null as number | null,
+        data: { error: 'operation_timeout', message: 'VEO operation polling reached max poll count' },
+      };
+    }
 
-  return {
-    ok: false,
-    status: null as number | null,
-    data: { error: 'operation_timeout', message: 'VEO operation polling timed out' },
-  };
+    if (maxTotalMs > 0 && Date.now() - startedAt >= maxTotalMs) {
+      return {
+        ok: false,
+        status: null as number | null,
+        data: { error: 'operation_timeout', message: 'VEO operation polling reached max total wait time' },
+      };
+    }
+
+    await sleep(pollIntervalMs);
+    attempt += 1;
+  }
 };
 
 export const generateStyledVideoWithVeo = async (params: {
