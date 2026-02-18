@@ -615,6 +615,9 @@ export const generateStyledVideoWithVeo = async (params: {
   const pixverseKeyframeId = Number(process.env.FAL_VIDEO_KEYFRAME_ID || 1);
   const enableBackgroundSwap = (process.env.FAL_VIDEO_ENABLE_BACKGROUND_SWAP || 'true') === 'true';
   const babyBackgroundImageUrl = process.env.FAL_VIDEO_BABY_BACKGROUND_IMAGE_URL || '';
+  const framingPrompt =
+    'Keep the baby face slightly farther from camera with medium-shot framing. Avoid extreme close-up facial framing. ' +
+    'Remove any Instagram logo, watermark, username label, or platform text overlay from the final video.';
 
   logger.info(
     {
@@ -654,8 +657,9 @@ export const generateStyledVideoWithVeo = async (params: {
       videoUrl: string;
       imageUrl: string;
       step: string;
+      prompt?: string;
     }) => {
-      const input = {
+      const input: any = {
         video_url: args.videoUrl,
         image_url: args.imageUrl,
         mode: args.mode,
@@ -663,6 +667,9 @@ export const generateStyledVideoWithVeo = async (params: {
         resolution: pixverseResolution,
         original_sound_switch: true,
       };
+      if (args.prompt) {
+        input.prompt = args.prompt;
+      }
       logger.info(
         {
           videoRequestId,
@@ -713,6 +720,7 @@ export const generateStyledVideoWithVeo = async (params: {
       videoUrl: referenceVideoUrl,
       imageUrl: userImageUrl,
       step: 'fal_pixverse_person_swap',
+      prompt: framingPrompt,
     });
     if (!personSwap.outputVideoUrl) {
       logger.warn(
