@@ -570,3 +570,174 @@ export const generateSummary = async (summaryInput: string) => {
     return null;
   }
 };
+
+const DEFAULT_VEO_VIDEO_MODEL = process.env.GEMINI_VEO_MODEL || 'veo-3.1-generate-preview';
+
+const shortPreview = (value: string | undefined | null, max = 180) => {
+  if (!value) return null;
+  return value.length > max ? `${value.slice(0, max)}...` : value;
+};
+
+const extractVideoUrlFromVeoResponse = (payload: any): string | null => {
+  if (!payload || typeof payload !== 'object') return null;
+
+  const direct =
+    payload?.video?.uri
+    || payload?.videoUrl
+    || payload?.output?.url
+    || payload?.result?.video?.uri;
+  if (typeof direct === 'string' && direct.trim().length > 0) {
+    return direct.trim();
+  }
+
+  const candidates = Array.isArray(payload?.generatedVideos) ? payload.generatedVideos : [];
+  for (const item of candidates) {
+    const candidateUrl = item?.video?.uri || item?.uri || item?.url;
+    if (typeof candidateUrl === 'string' && candidateUrl.trim().length > 0) {
+      return candidateUrl.trim();
+    }
+  }
+
+  return null;
+};
+
+export const generateStyledVideoWithVeo = async (params: {
+  styleId: string | null;
+  userImageUrl: string;
+  referenceVideoUrl: string;
+  requestId?: string | null;
+  model?: string;
+}) => {
+  const { styleId, userImageUrl, referenceVideoUrl, requestId } = params;
+  const resolvedModel = params.model || DEFAULT_VEO_VIDEO_MODEL;
+  const apiKey = getApiKey();
+  const veoRequestId = requestId || `veo-${Date.now()}`;
+  const endpoint = `${GEMINI_BASE_URL}/models/${resolvedModel}:generateVideos?key=${apiKey}`;
+
+  const requestBody = {
+    prompt:
+      'Create a vertical 9:16 baby-style cinematic video. Keep identity consistency from the input baby image, and follow the motion/style from the reference video.',
+    // NOTE: kept generic intentionally; provider schema may change by model/version.
+    references: [
+      { type: 'image', uri: userImageUrl },
+      { type: 'video', uri: referenceVideoUrl },
+    ],
+    videoGenerationConfig: {
+      aspectRatio: '9:16',
+    },
+  };
+
+  logger.info(
+    {
+      veoRequestId,
+      step: 'veo_request_prepared',
+      styleId,
+      model: resolvedModel,
+      userImageUrlPreview: shortPreview(userImageUrl),
+      referenceVideoUrlPreview: shortPreview(referenceVideoUrl),
+      requestBody,
+      hasApiKey: Boolean(apiKey),
+    },
+    'VEO request prepared'
+  );
+
+  if (!apiKey) {
+    logger.warn(
+      {
+        veoRequestId,
+        step: 'veo_skipped_missing_api_key',
+        styleId,
+      },
+      'GEMINI_API_KEY missing; using fallback video URL'
+    );
+    return {
+      outputVideoUrl: referenceVideoUrl,
+      providerText: 'Fallback video URL used because GEMINI_API_KEY is missing.',
+      providerStatus: null as number | null,
+      usedFallback: true,
+      providerRaw: null as any,
+    };
+  }
+
+  try {
+    logger.info(
+      {
+        veoRequestId,
+        step: 'veo_request_started',
+        endpointPreview: shortPreview(endpoint, 240),
+      },
+      'VEO request started'
+    );
+
+    const response = await axios.post(endpoint, requestBody, {
+      headers: { 'Content-Type': 'application/json' },
+      timeout: Number(process.env.GEMINI_VEO_TIMEOUT_MS || 120000),
+      validateStatus: () => true,
+    });
+
+    logger.info(
+      {
+        veoRequestId,
+        step: 'veo_response_received',
+        status: response.status,
+        statusText: response.statusText,
+        data: response.data,
+      },
+      'VEO response received'
+    );
+
+    const extractedVideoUrl = extractVideoUrlFromVeoResponse(response.data);
+    if (response.status >= 200 && response.status < 300 && extractedVideoUrl) {
+      logger.info(
+        {
+          veoRequestId,
+          step: 'veo_video_url_extracted',
+          outputVideoUrlPreview: shortPreview(extractedVideoUrl, 240),
+        },
+        'VEO output video URL extracted'
+      );
+      return {
+        outputVideoUrl: extractedVideoUrl,
+        providerText: null,
+        providerStatus: response.status,
+        usedFallback: false,
+        providerRaw: response.data,
+      };
+    }
+
+    logger.warn(
+      {
+        veoRequestId,
+        step: 'veo_fallback_due_to_invalid_response',
+        status: response.status,
+        hasExtractedVideoUrl: Boolean(extractedVideoUrl),
+      },
+      'VEO response invalid for output URL; using fallback video URL'
+    );
+    return {
+      outputVideoUrl: referenceVideoUrl,
+      providerText: `VEO fallback used (status: ${response.status})`,
+      providerStatus: response.status,
+      usedFallback: true,
+      providerRaw: response.data,
+    };
+  } catch (error: any) {
+    logger.error(
+      {
+        err: error,
+        veoRequestId,
+        step: 'veo_request_failed',
+        providerStatus: error?.response?.status || null,
+        providerData: error?.response?.data || null,
+      },
+      'VEO request failed; using fallback video URL'
+    );
+    return {
+      outputVideoUrl: referenceVideoUrl,
+      providerText: `VEO request failed: ${error?.message || 'unknown error'}`,
+      providerStatus: error?.response?.status || null,
+      usedFallback: true,
+      providerRaw: error?.response?.data || null,
+    };
+  }
+};

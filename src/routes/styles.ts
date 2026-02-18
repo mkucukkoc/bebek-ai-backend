@@ -3,7 +3,7 @@ import multer from 'multer';
 import { authenticateToken, AuthRequest } from '../middleware/authMiddleware';
 import { randomUUID } from 'crypto';
 import { db, FieldValue, storage } from '../firebase';
-import { generateStyledPhoto, generateStyledPhotoWithTemplate } from '../server/bebek/services/geminiService';
+import { generateStyledPhoto, generateStyledPhotoWithTemplate, generateStyledVideoWithVeo } from '../server/bebek/services/geminiService';
 import { logger } from '../utils/logger';
 import { attachRouteLogger } from '../utils/routeLogger';
 
@@ -436,6 +436,7 @@ export const createStylesRouter = () => {
       const requestId = typeof req.body?.request_id === 'string'
         ? req.body.request_id
         : (req.header('x-request-id') || null);
+      const requestedModel = typeof req.body?.model === 'string' ? req.body.model : undefined;
 
       const referenceVideoUrl = resolveVideoReferenceUrl(styleId);
       if (!referenceVideoUrl) {
@@ -450,6 +451,33 @@ export const createStylesRouter = () => {
         res.status(400).json({ error: 'invalid_request', message: 'user_image_url is required' });
         return;
       }
+
+      logger.info({
+        requestId,
+        step: 'video_generate_request_received',
+        userId,
+        styleId,
+        model: requestedModel || process.env.GEMINI_VEO_MODEL || 'veo-3.1-generate-preview',
+        userImageUrlPreview: userImageSource.slice(0, 220),
+        referenceVideoUrlPreview: referenceVideoUrl.slice(0, 220),
+      }, 'Video generation request received');
+
+      const providerResult = await generateStyledVideoWithVeo({
+        styleId,
+        userImageUrl: userImageSource,
+        referenceVideoUrl,
+        requestId,
+        model: requestedModel,
+      });
+
+      logger.info({
+        requestId,
+        step: 'video_generate_provider_completed',
+        styleId,
+        usedFallback: providerResult.usedFallback,
+        providerStatus: providerResult.providerStatus,
+        outputVideoUrlPreview: providerResult.outputVideoUrl.slice(0, 220),
+      }, 'Video generation provider step completed');
 
       const generatedId = randomUUID();
       const now = Date.now();
@@ -467,12 +495,23 @@ export const createStylesRouter = () => {
           requestId,
           inputImagePath: inputPath,
           inputImageUrl: userImageSource,
-          outputVideoUrl: referenceVideoUrl,
+          outputVideoUrl: providerResult.outputVideoUrl,
           outputImageUrl: null,
           outputMimeType: 'video/mp4',
+          providerText: providerResult.providerText || null,
+          providerStatus: providerResult.providerStatus || null,
+          providerRaw: providerResult.providerRaw || null,
+          usedFallback: providerResult.usedFallback,
           createdAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
         });
+
+      logger.info({
+        requestId,
+        step: 'video_generate_persisted',
+        generatedId,
+        inputPath,
+      }, 'Video generation result persisted');
 
       res.json({
         request_id: requestId,
@@ -485,10 +524,10 @@ export const createStylesRouter = () => {
         output: {
           id: generatedId,
           path: null,
-          url: referenceVideoUrl,
+          url: providerResult.outputVideoUrl,
           mimeType: 'video/mp4',
         },
-        provider_text: null,
+        provider_text: providerResult.providerText || null,
       });
     } catch (error) {
       logger.error({ err: error }, 'Video generation request failed');
