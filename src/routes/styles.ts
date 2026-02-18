@@ -495,7 +495,7 @@ export const createStylesRouter = () => {
         step: 'video_generate_request_received',
         userId,
         styleId,
-        model: requestedModel || process.env.FAL_VIDEO_MODEL || 'half-moon-ai/ai-face-swap/faceswapvideo',
+        model: requestedModel || process.env.FAL_VIDEO_MODEL || 'fal-ai/pixverse/swap',
         userImageUrlPreview: userImageSource.slice(0, 220),
         referenceVideoUrlPreview: referenceVideoUrl.slice(0, 220),
       }, 'Video generation request received');

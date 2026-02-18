@@ -571,7 +571,7 @@ export const generateSummary = async (summaryInput: string) => {
   }
 };
 
-const DEFAULT_FAL_VIDEO_MODEL = process.env.FAL_VIDEO_MODEL || 'half-moon-ai/ai-face-swap/faceswapvideo';
+const DEFAULT_FAL_VIDEO_MODEL = process.env.FAL_VIDEO_MODEL || 'fal-ai/pixverse/swap';
 
 const shortPreview = (value: string | undefined | null, max = 180) => {
   if (!value) return null;
@@ -611,12 +611,10 @@ export const generateStyledVideoWithVeo = async (params: {
   const resolvedModel = params.model || DEFAULT_FAL_VIDEO_MODEL;
   const falKey = getFalKey();
   const videoRequestId = requestId || `video-${Date.now()}`;
-  const faceSwapPrompt =
-    'Perform a complete baby transformation in the output video. ' +
-    'Do NOT keep the original adult head/hair identity from the target clip. ' +
-    'Replace the full head region (face + hairline + hair + head proportions) with the source baby identity so the result is fully baby-like and consistent in every frame. ' +
-    'Keep temporal consistency, natural skin blending, and stable facial landmarks. ' +
-    'Also update the scene to a baby-themed environment (nursery, soft pastel decor, toys, warm cinematic baby background) while keeping realistic motion continuity.';
+  const pixverseResolution = (process.env.FAL_VIDEO_RESOLUTION || '720p') as '360p' | '540p' | '720p';
+  const pixverseKeyframeId = Number(process.env.FAL_VIDEO_KEYFRAME_ID || 1);
+  const enableBackgroundSwap = (process.env.FAL_VIDEO_ENABLE_BACKGROUND_SWAP || 'true') === 'true';
+  const babyBackgroundImageUrl = process.env.FAL_VIDEO_BABY_BACKGROUND_IMAGE_URL || '';
 
   logger.info(
     {
@@ -651,92 +649,130 @@ export const generateStyledVideoWithVeo = async (params: {
 
   ensureFalConfigured();
   try {
-    const falInput = {
-      source_face_url: userImageUrl,
-      target_video_url: referenceVideoUrl,
-      prompt: faceSwapPrompt,
-    };
-    logger.info(
-      {
-        videoRequestId,
-        step: 'fal_video_request_started',
-        model: resolvedModel,
-        input: {
-          source_face_url: shortPreview(userImageUrl),
-          target_video_url: shortPreview(referenceVideoUrl),
-        },
-      },
-      'FAL video request started'
-    );
-
-    const result: any = await fal.subscribe(resolvedModel, {
-      input: falInput,
-      logs: true,
-      webhookUrl: process.env.FAL_VIDEO_WEBHOOK_URL || undefined,
-      onQueueUpdate: (update: any) => {
-        logger.info(
-          {
-            videoRequestId,
-            step: 'fal_video_queue_update',
-            model: resolvedModel,
-            status: update?.status || null,
-            queuePosition: update?.queue_position ?? null,
-            logs: Array.isArray(update?.logs)
-              ? update.logs.map((log: any) => ({
-                level: log?.level || null,
-                message: log?.message || null,
-                timestamp: log?.timestamp || null,
-              }))
-              : [],
-          },
-          'FAL video queue update'
-        );
-      },
-    });
-
-    logger.info(
-      {
-        videoRequestId,
-        step: 'fal_video_response_received',
-        model: resolvedModel,
-        requestId: result?.requestId || result?.request_id || null,
-        data: result,
-      },
-      'FAL video response received'
-    );
-
-    const extractedVideoUrl = extractVideoUrlFromFalResponse(result);
-    if (extractedVideoUrl) {
+    const runPixverseSwap = async (args: {
+      mode: 'person' | 'object' | 'background';
+      videoUrl: string;
+      imageUrl: string;
+      step: string;
+    }) => {
+      const input = {
+        video_url: args.videoUrl,
+        image_url: args.imageUrl,
+        mode: args.mode,
+        keyframe_id: Number.isFinite(pixverseKeyframeId) ? pixverseKeyframeId : 1,
+        resolution: pixverseResolution,
+        original_sound_switch: true,
+      };
       logger.info(
         {
           videoRequestId,
-          step: 'fal_video_url_extracted',
-          outputVideoUrlPreview: shortPreview(extractedVideoUrl, 240),
+          step: `${args.step}_started`,
+          model: resolvedModel,
+          input: {
+            ...input,
+            video_url: shortPreview(input.video_url),
+            image_url: shortPreview(input.image_url),
+          },
         },
-        'FAL output video URL extracted'
+        'FAL Pixverse swap step started'
+      );
+
+      const result: any = await fal.subscribe(resolvedModel, {
+        input,
+        logs: true,
+        onQueueUpdate: (update: any) => {
+          logger.info(
+            {
+              videoRequestId,
+              step: `${args.step}_queue_update`,
+              model: resolvedModel,
+              status: update?.status || null,
+              queuePosition: update?.queue_position ?? null,
+            },
+            'FAL Pixverse queue update'
+          );
+        },
+      });
+
+      const outputVideoUrl = extractVideoUrlFromFalResponse(result);
+      logger.info(
+        {
+          videoRequestId,
+          step: `${args.step}_completed`,
+          model: resolvedModel,
+          requestId: result?.requestId || result?.request_id || null,
+          outputVideoUrlPreview: shortPreview(outputVideoUrl || ''),
+        },
+        'FAL Pixverse swap step completed'
+      );
+      return { result, outputVideoUrl };
+    };
+
+    const personSwap = await runPixverseSwap({
+      mode: 'person',
+      videoUrl: referenceVideoUrl,
+      imageUrl: userImageUrl,
+      step: 'fal_pixverse_person_swap',
+    });
+    if (!personSwap.outputVideoUrl) {
+      logger.warn(
+        { videoRequestId, step: 'fal_pixverse_person_swap_missing_output' },
+        'Pixverse person swap missing output URL; using fallback'
       );
       return {
-        outputVideoUrl: extractedVideoUrl,
-        providerText: null,
+        outputVideoUrl: referenceVideoUrl,
+        providerText: 'FAL fallback used (person swap response missing video URL)',
         providerStatus: 200,
-        usedFallback: false,
-        providerRaw: result,
+        usedFallback: true,
+        providerRaw: personSwap.result,
       };
     }
 
-    logger.warn(
-      {
-        videoRequestId,
-        step: 'fal_video_invalid_response_fallback',
-      },
-      'FAL response missing video URL; using fallback video URL'
-    );
+    let finalVideoUrl = personSwap.outputVideoUrl;
+    let providerRaw: any = personSwap.result;
+    let providerText: string | null = null;
+
+    if (enableBackgroundSwap && babyBackgroundImageUrl) {
+      try {
+        const backgroundSwap = await runPixverseSwap({
+          mode: 'background',
+          videoUrl: personSwap.outputVideoUrl,
+          imageUrl: babyBackgroundImageUrl,
+          step: 'fal_pixverse_background_swap',
+        });
+        if (backgroundSwap.outputVideoUrl) {
+          finalVideoUrl = backgroundSwap.outputVideoUrl;
+          providerRaw = {
+            personSwap: personSwap.result,
+            backgroundSwap: backgroundSwap.result,
+          };
+        } else {
+          providerText = 'Background swap skipped: response missing video URL, returning person swap output.';
+          providerRaw = {
+            personSwap: personSwap.result,
+            backgroundSwap: backgroundSwap.result,
+          };
+        }
+      } catch (backgroundError: any) {
+        logger.warn(
+          {
+            videoRequestId,
+            step: 'fal_pixverse_background_swap_failed',
+            message: backgroundError?.message || 'unknown_error',
+            providerData: backgroundError?.response?.data || backgroundError?.body || null,
+          },
+          'Pixverse background swap failed; returning person swap output'
+        );
+        providerText = 'Background swap failed; returning person swap output.';
+      }
+    }
+
     return {
-      outputVideoUrl: referenceVideoUrl,
-      providerText: 'FAL fallback used (response missing video URL)',
+      outputVideoUrl: finalVideoUrl,
+      providerText,
       providerStatus: 200,
-      usedFallback: true,
-      providerRaw: result,
+      usedFallback: false,
+      providerRaw,
     };
   } catch (error: any) {
     logger.error(
