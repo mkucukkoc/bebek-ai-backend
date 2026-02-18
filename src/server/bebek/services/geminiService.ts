@@ -695,23 +695,48 @@ export const generateStyledVideoWithVeo = async (params: {
   const veoRequestId = requestId || `veo-${Date.now()}`;
   let endpoint = `${GEMINI_BASE_URL}/models/${resolvedModel}:predictLongRunning?key=${apiKey}`;
 
-  const requestBody = {
-    instances: [
-      {
-        prompt:
-          'Create a vertical 9:16 baby-style cinematic video. Keep identity consistency from the input baby image, and follow the motion/style from the reference video.',
-        inputImage: {
-          uri: userImageUrl,
-        },
-        referenceVideo: {
-          uri: referenceVideoUrl,
-        },
+  const basePrompt =
+    'Create a vertical 9:16 baby-style cinematic video. Keep identity consistency from the input baby image, and follow the motion/style from the reference video.';
+  const requestVariants = [
+    {
+      name: 'image+referenceVideo',
+      body: {
+        instances: [
+          {
+            prompt: basePrompt,
+            image: { uri: userImageUrl },
+            referenceVideo: { uri: referenceVideoUrl },
+          },
+        ],
+        parameters: { aspectRatio: '9:16' },
       },
-    ],
-    parameters: {
-      aspectRatio: '9:16',
     },
-  };
+    {
+      name: 'personReference+referenceVideo',
+      body: {
+        instances: [
+          {
+            prompt: basePrompt,
+            personReference: { uri: userImageUrl },
+            referenceVideo: { uri: referenceVideoUrl },
+          },
+        ],
+        parameters: { aspectRatio: '9:16' },
+      },
+    },
+    {
+      name: 'prompt+referenceVideo-only',
+      body: {
+        instances: [
+          {
+            prompt: `${basePrompt} Use the person in this source image as identity reference: ${userImageUrl}`,
+            referenceVideo: { uri: referenceVideoUrl },
+          },
+        ],
+        parameters: { aspectRatio: '9:16' },
+      },
+    },
+  ];
 
   logger.info(
     {
@@ -721,7 +746,8 @@ export const generateStyledVideoWithVeo = async (params: {
       model: resolvedModel,
       userImageUrlPreview: shortPreview(userImageUrl),
       referenceVideoUrlPreview: shortPreview(referenceVideoUrl),
-      requestBody,
+      requestVariantNames: requestVariants.map(item => item.name),
+      requestBodyPreview: requestVariants[0].body,
       hasApiKey: Boolean(apiKey),
     },
     'VEO request prepared'
@@ -813,11 +839,43 @@ export const generateStyledVideoWithVeo = async (params: {
       'VEO request started'
     );
 
-    const response = await axios.post(endpoint, requestBody, {
-      headers: { 'Content-Type': 'application/json' },
-      timeout: Number(process.env.GEMINI_VEO_TIMEOUT_MS || 120000),
-      validateStatus: () => true,
-    });
+    let response: any = null;
+    for (const variant of requestVariants) {
+      logger.info(
+        {
+          veoRequestId,
+          step: 'veo_request_attempt_started',
+          variant: variant.name,
+          body: variant.body,
+        },
+        'VEO request attempt started'
+      );
+
+      const attemptResponse = await axios.post(endpoint, variant.body, {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: Number(process.env.GEMINI_VEO_TIMEOUT_MS || 120000),
+        validateStatus: () => true,
+      });
+
+      logger.info(
+        {
+          veoRequestId,
+          step: 'veo_request_attempt_result',
+          variant: variant.name,
+          status: attemptResponse.status,
+          data: attemptResponse.data,
+        },
+        'VEO request attempt result'
+      );
+
+      response = attemptResponse;
+      if (attemptResponse.status >= 200 && attemptResponse.status < 300) {
+        break;
+      }
+      if (attemptResponse.status !== 400) {
+        break;
+      }
+    }
 
     logger.info(
       {
