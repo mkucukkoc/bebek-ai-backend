@@ -601,6 +601,22 @@ const extractVideoUrlFromVeoResponse = (payload: any): string | null => {
   return null;
 };
 
+type GeminiModelListResponse = {
+  models?: Array<{
+    name?: string;
+    supportedGenerationMethods?: string[];
+  }>;
+};
+
+const listGeminiModels = async (apiKey: string) => {
+  const url = `${GEMINI_BASE_URL}/models?key=${apiKey}`;
+  const response = await axios.get<GeminiModelListResponse>(url, {
+    timeout: Number(process.env.GEMINI_MODEL_LIST_TIMEOUT_MS || 30000),
+    validateStatus: () => true,
+  });
+  return response;
+};
+
 export const generateStyledVideoWithVeo = async (params: {
   styleId: string | null;
   userImageUrl: string;
@@ -609,10 +625,10 @@ export const generateStyledVideoWithVeo = async (params: {
   model?: string;
 }) => {
   const { styleId, userImageUrl, referenceVideoUrl, requestId } = params;
-  const resolvedModel = params.model || DEFAULT_VEO_VIDEO_MODEL;
+  let resolvedModel = params.model || DEFAULT_VEO_VIDEO_MODEL;
   const apiKey = getApiKey();
   const veoRequestId = requestId || `veo-${Date.now()}`;
-  const endpoint = `${GEMINI_BASE_URL}/models/${resolvedModel}:generateVideos?key=${apiKey}`;
+  let endpoint = `${GEMINI_BASE_URL}/models/${resolvedModel}:generateVideos?key=${apiKey}`;
 
   const requestBody = {
     prompt:
@@ -660,11 +676,59 @@ export const generateStyledVideoWithVeo = async (params: {
   }
 
   try {
+    const modelsResponse = await listGeminiModels(apiKey);
+    const allModels = Array.isArray(modelsResponse.data?.models) ? modelsResponse.data.models : [];
+    const videoCapableModels = allModels
+      .filter(model => Array.isArray(model?.supportedGenerationMethods) && model!.supportedGenerationMethods!.includes('generateVideos'))
+      .map(model => model?.name)
+      .filter((name): name is string => Boolean(name));
+
+    const normalizedResolvedModel = resolvedModel.startsWith('models/')
+      ? resolvedModel
+      : `models/${resolvedModel}`;
+    const hasRequestedModel = allModels.some(model => model?.name === normalizedResolvedModel);
+    const hasRequestedVideoSupport = allModels.some(
+      model =>
+        model?.name === normalizedResolvedModel
+        && Array.isArray(model?.supportedGenerationMethods)
+        && model.supportedGenerationMethods.includes('generateVideos')
+    );
+
+    logger.info(
+      {
+        veoRequestId,
+        step: 'veo_model_discovery_completed',
+        modelListStatus: modelsResponse.status,
+        requestedModel: resolvedModel,
+        requestedModelNormalized: normalizedResolvedModel,
+        hasRequestedModel,
+        hasRequestedVideoSupport,
+        videoCapableModels,
+      },
+      'VEO model discovery completed'
+    );
+
+    if (modelsResponse.status >= 200 && modelsResponse.status < 300 && !hasRequestedVideoSupport && videoCapableModels.length > 0) {
+      const fallbackModelName = videoCapableModels[0].replace(/^models\//, '');
+      logger.warn(
+        {
+          veoRequestId,
+          step: 'veo_model_auto_switch',
+          fromModel: resolvedModel,
+          toModel: fallbackModelName,
+        },
+        'Requested model not video-capable; auto-switching to available video model'
+      );
+      resolvedModel = fallbackModelName;
+      endpoint = `${GEMINI_BASE_URL}/models/${resolvedModel}:generateVideos?key=${apiKey}`;
+    }
+
     logger.info(
       {
         veoRequestId,
         step: 'veo_request_started',
-        endpointPreview: shortPreview(endpoint, 240),
+        endpointWithoutKey: `${GEMINI_BASE_URL}/models/${resolvedModel}:generateVideos`,
+        endpointPreview: shortPreview(endpoint, 260),
       },
       'VEO request started'
     );
