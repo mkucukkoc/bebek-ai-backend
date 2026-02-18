@@ -585,7 +585,11 @@ const extractVideoUrlFromVeoResponse = (payload: any): string | null => {
     payload?.video?.uri
     || payload?.videoUrl
     || payload?.output?.url
-    || payload?.result?.video?.uri;
+    || payload?.result?.video?.uri
+    || payload?.response?.video?.uri
+    || payload?.response?.videoUrl
+    || payload?.response?.output?.url
+    || payload?.response?.result?.video?.uri;
   if (typeof direct === 'string' && direct.trim().length > 0) {
     return direct.trim();
   }
@@ -600,6 +604,8 @@ const extractVideoUrlFromVeoResponse = (payload: any): string | null => {
 
   return null;
 };
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 type GeminiModelListResponse = {
   models?: Array<{
@@ -617,6 +623,65 @@ const listGeminiModels = async (apiKey: string) => {
   return response;
 };
 
+const pollLongRunningOperation = async (params: {
+  apiKey: string;
+  operationName: string;
+  veoRequestId: string;
+}) => {
+  const { apiKey, operationName, veoRequestId } = params;
+  const maxPollCount = Number(process.env.GEMINI_VEO_POLL_MAX || 20);
+  const pollIntervalMs = Number(process.env.GEMINI_VEO_POLL_INTERVAL_MS || 3000);
+  const opName = operationName.startsWith('operations/')
+    ? operationName
+    : operationName.replace(/^\/+/, '');
+  const opUrl = `${GEMINI_BASE_URL}/${opName}?key=${apiKey}`;
+
+  for (let attempt = 1; attempt <= maxPollCount; attempt += 1) {
+    const response = await axios.get(opUrl, {
+      timeout: Number(process.env.GEMINI_VEO_TIMEOUT_MS || 120000),
+      validateStatus: () => true,
+    });
+    const pollPayload = response.data as any;
+
+    logger.info(
+      {
+        veoRequestId,
+        step: 'veo_operation_poll_response',
+        operationName: opName,
+        pollAttempt: attempt,
+        status: response.status,
+        done: Boolean(pollPayload?.done),
+        data: pollPayload,
+      },
+      'VEO operation poll response received'
+    );
+
+    if (response.status < 200 || response.status >= 300) {
+      return {
+        ok: false,
+        status: response.status,
+        data: response.data,
+      };
+    }
+
+    if (pollPayload?.done) {
+      return {
+        ok: true,
+        status: response.status,
+        data: pollPayload,
+      };
+    }
+
+    await sleep(pollIntervalMs);
+  }
+
+  return {
+    ok: false,
+    status: null as number | null,
+    data: { error: 'operation_timeout', message: 'VEO operation polling timed out' },
+  };
+};
+
 export const generateStyledVideoWithVeo = async (params: {
   styleId: string | null;
   userImageUrl: string;
@@ -631,14 +696,19 @@ export const generateStyledVideoWithVeo = async (params: {
   let endpoint = `${GEMINI_BASE_URL}/models/${resolvedModel}:predictLongRunning?key=${apiKey}`;
 
   const requestBody = {
-    prompt:
-      'Create a vertical 9:16 baby-style cinematic video. Keep identity consistency from the input baby image, and follow the motion/style from the reference video.',
-    // NOTE: kept generic intentionally; provider schema may change by model/version.
-    references: [
-      { type: 'image', uri: userImageUrl },
-      { type: 'video', uri: referenceVideoUrl },
+    instances: [
+      {
+        prompt:
+          'Create a vertical 9:16 baby-style cinematic video. Keep identity consistency from the input baby image, and follow the motion/style from the reference video.',
+        inputImage: {
+          uri: userImageUrl,
+        },
+        referenceVideo: {
+          uri: referenceVideoUrl,
+        },
+      },
     ],
-    videoGenerationConfig: {
+    parameters: {
       aspectRatio: '9:16',
     },
   };
@@ -738,7 +808,7 @@ export const generateStyledVideoWithVeo = async (params: {
         veoRequestId,
         step: 'veo_request_started',
         endpointWithoutKey: `${GEMINI_BASE_URL}/models/${resolvedModel}:predictLongRunning`,
-        endpointPreview: shortPreview(endpoint, 260),
+        endpointPreview: shortPreview(endpoint.replace(/\?key=.*/, '?key=***'), 260),
       },
       'VEO request started'
     );
@@ -760,7 +830,48 @@ export const generateStyledVideoWithVeo = async (params: {
       'VEO response received'
     );
 
-    const extractedVideoUrl = extractVideoUrlFromVeoResponse(response.data);
+    let resolvedPayload: any = response.data;
+    const initialPayload = response.data as any;
+    const operationName = typeof initialPayload?.name === 'string' ? initialPayload.name : null;
+
+    if (response.status >= 200 && response.status < 300 && operationName) {
+      logger.info(
+        {
+          veoRequestId,
+          step: 'veo_operation_poll_started',
+          operationName,
+        },
+        'VEO long-running operation polling started'
+      );
+      const pollResult = await pollLongRunningOperation({
+        apiKey,
+        operationName,
+        veoRequestId,
+      });
+      if (pollResult.ok) {
+        resolvedPayload = pollResult.data;
+      } else {
+        logger.warn(
+          {
+            veoRequestId,
+            step: 'veo_operation_poll_failed',
+            operationName,
+            status: pollResult.status,
+            data: pollResult.data,
+          },
+          'VEO operation polling failed; using fallback video URL'
+        );
+        return {
+          outputVideoUrl: referenceVideoUrl,
+          providerText: `VEO fallback used (poll failed, status: ${pollResult.status ?? 'timeout'})`,
+          providerStatus: pollResult.status,
+          usedFallback: true,
+          providerRaw: pollResult.data,
+        };
+      }
+    }
+
+    const extractedVideoUrl = extractVideoUrlFromVeoResponse(resolvedPayload);
     if (response.status >= 200 && response.status < 300 && extractedVideoUrl) {
       logger.info(
         {
@@ -775,7 +886,7 @@ export const generateStyledVideoWithVeo = async (params: {
         providerText: null,
         providerStatus: response.status,
         usedFallback: false,
-        providerRaw: response.data,
+        providerRaw: resolvedPayload,
       };
     }
 
@@ -793,7 +904,7 @@ export const generateStyledVideoWithVeo = async (params: {
       providerText: `VEO fallback used (status: ${response.status})`,
       providerStatus: response.status,
       usedFallback: true,
-      providerRaw: response.data,
+      providerRaw: resolvedPayload,
     };
   } catch (error: any) {
     logger.error(
