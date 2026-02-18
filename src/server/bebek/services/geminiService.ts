@@ -589,7 +589,11 @@ const extractVideoUrlFromVeoResponse = (payload: any): string | null => {
     || payload?.response?.video?.uri
     || payload?.response?.videoUrl
     || payload?.response?.output?.url
-    || payload?.response?.result?.video?.uri;
+    || payload?.response?.result?.video?.uri
+    || payload?.response?.generateVideoResponse?.generatedSamples?.[0]?.video?.uri
+    || payload?.generateVideoResponse?.generatedSamples?.[0]?.video?.uri
+    || payload?.response?.generatedVideos?.[0]?.video?.uri
+    || payload?.generatedVideos?.[0]?.video?.uri;
   if (typeof direct === 'string' && direct.trim().length > 0) {
     return direct.trim();
   }
@@ -607,6 +611,32 @@ const extractVideoUrlFromVeoResponse = (payload: any): string | null => {
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+const inferImageMimeTypeFromUrl = (url: string, fallback = 'image/jpeg') => {
+  const lower = url.toLowerCase();
+  if (lower.includes('.png')) return 'image/png';
+  if (lower.includes('.webp')) return 'image/webp';
+  if (lower.includes('.heic')) return 'image/heic';
+  if (lower.includes('.jpg') || lower.includes('.jpeg')) return 'image/jpeg';
+  return fallback;
+};
+
+const loadImageInlineDataFromUrl = async (url: string) => {
+  const response = await axios.get<ArrayBuffer>(url, {
+    responseType: 'arraybuffer',
+    timeout: Number(process.env.GEMINI_VEO_IMAGE_FETCH_TIMEOUT_MS || 30000),
+    validateStatus: () => true,
+  });
+  if (response.status < 200 || response.status >= 300) {
+    throw new Error(`image_fetch_failed_${response.status}`);
+  }
+  const contentTypeHeader = (response.headers['content-type'] as string | undefined)?.toLowerCase();
+  const mimeType = contentTypeHeader?.startsWith('image/')
+    ? contentTypeHeader
+    : inferImageMimeTypeFromUrl(url);
+  const data = Buffer.from(response.data as any).toString('base64');
+  return { mimeType, data };
+};
+
 type GeminiModelListResponse = {
   models?: Array<{
     name?: string;
@@ -615,8 +645,9 @@ type GeminiModelListResponse = {
 };
 
 const listGeminiModels = async (apiKey: string) => {
-  const url = `${GEMINI_BASE_URL}/models?key=${apiKey}`;
+  const url = `${GEMINI_BASE_URL}/models`;
   const response = await axios.get<GeminiModelListResponse>(url, {
+    headers: { 'x-goog-api-key': apiKey },
     timeout: Number(process.env.GEMINI_MODEL_LIST_TIMEOUT_MS || 30000),
     validateStatus: () => true,
   });
@@ -634,10 +665,11 @@ const pollLongRunningOperation = async (params: {
   const opName = operationName.startsWith('operations/')
     ? operationName
     : operationName.replace(/^\/+/, '');
-  const opUrl = `${GEMINI_BASE_URL}/${opName}?key=${apiKey}`;
+  const opUrl = `${GEMINI_BASE_URL}/${opName}`;
 
   for (let attempt = 1; attempt <= maxPollCount; attempt += 1) {
     const response = await axios.get(opUrl, {
+      headers: { 'x-goog-api-key': apiKey },
       timeout: Number(process.env.GEMINI_VEO_TIMEOUT_MS || 120000),
       validateStatus: () => true,
     });
@@ -693,50 +725,71 @@ export const generateStyledVideoWithVeo = async (params: {
   let resolvedModel = params.model || DEFAULT_VEO_VIDEO_MODEL;
   const apiKey = getApiKey();
   const veoRequestId = requestId || `veo-${Date.now()}`;
-  let endpoint = `${GEMINI_BASE_URL}/models/${resolvedModel}:predictLongRunning?key=${apiKey}`;
+  let endpoint = `${GEMINI_BASE_URL}/models/${resolvedModel}:predictLongRunning`;
 
   const basePrompt =
-    'Create a vertical 9:16 baby-style cinematic video. Keep identity consistency from the input baby image, and follow the motion/style from the reference video.';
-  const requestVariants = [
-    {
-      name: 'image+referenceVideo',
-      body: {
-        instances: [
-          {
-            prompt: basePrompt,
-            image: { uri: userImageUrl },
-            referenceVideo: { uri: referenceVideoUrl },
-          },
-        ],
-        parameters: { aspectRatio: '9:16' },
+    'Create a vertical 9:16 baby-style cinematic video. Keep identity consistency from the source baby image. Follow the motion and vibe from this reference clip context.';
+  const promptWithReferenceContext = `${basePrompt} Reference motion context URL: ${referenceVideoUrl}`;
+  let inlineImage: { mimeType: string; data: string } | null = null;
+  try {
+    inlineImage = await loadImageInlineDataFromUrl(userImageUrl);
+  } catch (error: any) {
+    logger.warn(
+      {
+        veoRequestId,
+        step: 'veo_input_image_fetch_failed',
+        userImageUrlPreview: shortPreview(userImageUrl),
+        message: error?.message || 'unknown_error',
       },
-    },
-    {
-      name: 'personReference+referenceVideo',
-      body: {
-        instances: [
-          {
-            prompt: basePrompt,
-            personReference: { uri: userImageUrl },
-            referenceVideo: { uri: referenceVideoUrl },
+      'VEO source image could not be fetched; falling back to prompt-only variant'
+    );
+  }
+  const requestVariants = inlineImage
+    ? [
+      {
+        name: 'prompt+referenceImages',
+        body: {
+          instances: [{ prompt: promptWithReferenceContext }],
+          parameters: {
+            aspectRatio: '9:16',
+            referenceImages: [
+              {
+                image: { inlineData: { mimeType: inlineImage.mimeType, data: inlineImage.data } },
+                referenceType: 'asset',
+              },
+            ],
           },
-        ],
-        parameters: { aspectRatio: '9:16' },
+        },
       },
-    },
-    {
-      name: 'prompt+referenceVideo-only',
-      body: {
-        instances: [
-          {
-            prompt: `${basePrompt} Use the person in this source image as identity reference: ${userImageUrl}`,
-            referenceVideo: { uri: referenceVideoUrl },
-          },
-        ],
-        parameters: { aspectRatio: '9:16' },
+      {
+        name: 'prompt+image',
+        body: {
+          instances: [
+            {
+              prompt: promptWithReferenceContext,
+              image: { inlineData: { mimeType: inlineImage.mimeType, data: inlineImage.data } },
+            },
+          ],
+          parameters: { aspectRatio: '9:16' },
+        },
       },
-    },
-  ];
+      {
+        name: 'prompt-only',
+        body: {
+          instances: [{ prompt: promptWithReferenceContext }],
+          parameters: { aspectRatio: '9:16' },
+        },
+      },
+    ]
+    : [
+      {
+        name: 'prompt-only',
+        body: {
+          instances: [{ prompt: promptWithReferenceContext }],
+          parameters: { aspectRatio: '9:16' },
+        },
+      },
+    ];
 
   logger.info(
     {
@@ -746,8 +799,17 @@ export const generateStyledVideoWithVeo = async (params: {
       model: resolvedModel,
       userImageUrlPreview: shortPreview(userImageUrl),
       referenceVideoUrlPreview: shortPreview(referenceVideoUrl),
+      hasInlineImage: Boolean(inlineImage),
       requestVariantNames: requestVariants.map(item => item.name),
-      requestBodyPreview: requestVariants[0].body,
+      requestBodyPreview: {
+        ...requestVariants[0].body,
+        parameters: {
+          ...(requestVariants[0].body as any).parameters,
+          referenceImages: Array.isArray((requestVariants[0].body as any)?.parameters?.referenceImages)
+            ? '[inlineData omitted]'
+            : (requestVariants[0].body as any)?.parameters?.referenceImages,
+        },
+      },
       hasApiKey: Boolean(apiKey),
     },
     'VEO request prepared'
@@ -826,7 +888,7 @@ export const generateStyledVideoWithVeo = async (params: {
         'Requested model not video-capable; auto-switching to available video model'
       );
       resolvedModel = fallbackModelName;
-      endpoint = `${GEMINI_BASE_URL}/models/${resolvedModel}:predictLongRunning?key=${apiKey}`;
+      endpoint = `${GEMINI_BASE_URL}/models/${resolvedModel}:predictLongRunning`;
     }
 
     logger.info(
@@ -834,7 +896,7 @@ export const generateStyledVideoWithVeo = async (params: {
         veoRequestId,
         step: 'veo_request_started',
         endpointWithoutKey: `${GEMINI_BASE_URL}/models/${resolvedModel}:predictLongRunning`,
-        endpointPreview: shortPreview(endpoint.replace(/\?key=.*/, '?key=***'), 260),
+        endpointPreview: shortPreview(endpoint, 260),
       },
       'VEO request started'
     );
@@ -852,7 +914,10 @@ export const generateStyledVideoWithVeo = async (params: {
       );
 
       const attemptResponse = await axios.post(endpoint, variant.body, {
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
         timeout: Number(process.env.GEMINI_VEO_TIMEOUT_MS || 120000),
         validateStatus: () => true,
       });
