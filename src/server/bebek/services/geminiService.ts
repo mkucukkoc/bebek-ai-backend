@@ -628,7 +628,7 @@ export const generateStyledVideoWithVeo = async (params: {
   let resolvedModel = params.model || DEFAULT_VEO_VIDEO_MODEL;
   const apiKey = getApiKey();
   const veoRequestId = requestId || `veo-${Date.now()}`;
-  let endpoint = `${GEMINI_BASE_URL}/models/${resolvedModel}:generateVideos?key=${apiKey}`;
+  let endpoint = `${GEMINI_BASE_URL}/models/${resolvedModel}:predictLongRunning?key=${apiKey}`;
 
   const requestBody = {
     prompt:
@@ -679,7 +679,14 @@ export const generateStyledVideoWithVeo = async (params: {
     const modelsResponse = await listGeminiModels(apiKey);
     const allModels = Array.isArray(modelsResponse.data?.models) ? modelsResponse.data.models : [];
     const videoCapableModels = allModels
-      .filter(model => Array.isArray(model?.supportedGenerationMethods) && model!.supportedGenerationMethods!.includes('generateVideos'))
+      .filter(
+        model =>
+          Array.isArray(model?.supportedGenerationMethods)
+          && (
+            model!.supportedGenerationMethods!.includes('predictLongRunning')
+            || model!.supportedGenerationMethods!.includes('generateVideos')
+          )
+      )
       .map(model => model?.name)
       .filter((name): name is string => Boolean(name));
 
@@ -691,7 +698,10 @@ export const generateStyledVideoWithVeo = async (params: {
       model =>
         model?.name === normalizedResolvedModel
         && Array.isArray(model?.supportedGenerationMethods)
-        && model.supportedGenerationMethods.includes('generateVideos')
+        && (
+          model.supportedGenerationMethods.includes('predictLongRunning')
+          || model.supportedGenerationMethods.includes('generateVideos')
+        )
     );
 
     logger.info(
@@ -720,14 +730,14 @@ export const generateStyledVideoWithVeo = async (params: {
         'Requested model not video-capable; auto-switching to available video model'
       );
       resolvedModel = fallbackModelName;
-      endpoint = `${GEMINI_BASE_URL}/models/${resolvedModel}:generateVideos?key=${apiKey}`;
+      endpoint = `${GEMINI_BASE_URL}/models/${resolvedModel}:predictLongRunning?key=${apiKey}`;
     }
 
     logger.info(
       {
         veoRequestId,
         step: 'veo_request_started',
-        endpointWithoutKey: `${GEMINI_BASE_URL}/models/${resolvedModel}:generateVideos`,
+        endpointWithoutKey: `${GEMINI_BASE_URL}/models/${resolvedModel}:predictLongRunning`,
         endpointPreview: shortPreview(endpoint, 260),
       },
       'VEO request started'
