@@ -495,7 +495,7 @@ export const createStylesRouter = () => {
         step: 'video_generate_request_received',
         userId,
         styleId,
-        model: requestedModel || process.env.GEMINI_VEO_MODEL || 'veo-3.1-generate-preview',
+        model: requestedModel || process.env.FAL_VIDEO_MODEL || 'half-moon-ai/ai-face-swap/faceswapvideo',
         userImageUrlPreview: userImageSource.slice(0, 220),
         referenceVideoUrlPreview: referenceVideoUrl.slice(0, 220),
       }, 'Video generation request received');
