@@ -65,10 +65,20 @@ export const createStylesRouter = () => {
     n13: `Vertical 9:16 newborn baby sleeping on soft neutral desert-toned fabrics, minimal boho aesthetic, warm earthy colors, cinematic soft shadows, luxury newborn photography ${NEWBORN_IDENTITY_SUFFIX}`,
     n14: `Vertical newborn baby styled as tiny astronaut, soft space-themed background, cinematic lighting, ultra cute futuristic newborn portrait, photorealistic ${NEWBORN_IDENTITY_SUFFIX}`,
   };
+  const DEFAULT_VIDEO_REFERENCE_URL =
+    'https://firebasestorage.googleapis.com/v0/b/bebek-ai.firebasestorage.app/o/assets%2Fvideos%2FWhatsApp%20Video%202026-02-16%20at%2020.05.15.mp4?alt=media&token=7d69ba45-549f-492c-92fe-41eac3fa6356';
+  const VIDEO_REFERENCE_URL_BY_STYLE_ID: Record<string, string> = {
+    v1: 'https://firebasestorage.googleapis.com/v0/b/bebek-ai.firebasestorage.app/o/assets%2Fvideos%2FWhatsApp%20Video%202026-02-16%20at%2020.05.15.mp4?alt=media&token=7d69ba45-549f-492c-92fe-41eac3fa6356',
+    v2: 'https://firebasestorage.googleapis.com/v0/b/bebek-ai.firebasestorage.app/o/assets%2Fvideos%2FWhatsApp%20Video%202026-02-16%20at%2020.05.15.mp4?alt=media&token=7d69ba45-549f-492c-92fe-41eac3fa6356',
+  };
 
   const resolveStylePrompt = (styleId: string | null) => {
     if (!styleId) return null;
     return STYLE_PROMPT_BY_ID[styleId] || null;
+  };
+  const resolveVideoReferenceUrl = (styleId: string | null) => {
+    if (!styleId) return DEFAULT_VIDEO_REFERENCE_URL;
+    return VIDEO_REFERENCE_URL_BY_STYLE_ID[styleId] || DEFAULT_VIDEO_REFERENCE_URL;
   };
 
   const normalizeKey = (value: string) =>
@@ -404,6 +414,87 @@ export const createStylesRouter = () => {
       const status = isConfigIssue ? 503 : 500;
       res.status(status).json({
         error: isConfigIssue ? 'service_unavailable' : 'internal_error',
+        message,
+      });
+    }
+  });
+
+  router.post('/video/generate', authenticateToken, async (req, res) => {
+    try {
+      const authReq = req as AuthRequest;
+      if (!authReq.user) {
+        res.status(401).json({ error: 'access_denied', message: 'Authentication required' });
+        return;
+      }
+
+      const userId = authReq.user.id;
+      const styleId = typeof req.body?.style_id === 'string' ? req.body.style_id : null;
+      const userImageSource =
+        typeof req.body?.user_image_url === 'string'
+          ? req.body.user_image_url
+          : (typeof req.body?.user_image_path === 'string' ? req.body.user_image_path : '');
+      const requestId = typeof req.body?.request_id === 'string'
+        ? req.body.request_id
+        : (req.header('x-request-id') || null);
+
+      const referenceVideoUrl = resolveVideoReferenceUrl(styleId);
+      if (!referenceVideoUrl) {
+        res.status(400).json({
+          error: 'invalid_request',
+          message: 'Video URL could not be resolved',
+        });
+        return;
+      }
+
+      if (!userImageSource) {
+        res.status(400).json({ error: 'invalid_request', message: 'user_image_url is required' });
+        return;
+      }
+
+      const generatedId = randomUUID();
+      const now = Date.now();
+      const inputPath = resolveStorageObjectPath(userImageSource) || `users/${userId}/uploads/video/${now}-remote.jpg`;
+
+      await db
+        .collection('users')
+        .doc(userId)
+        .collection('generatedPhotos')
+        .doc(generatedId)
+        .set({
+          id: generatedId,
+          styleType: 'video',
+          styleId,
+          requestId,
+          inputImagePath: inputPath,
+          inputImageUrl: userImageSource,
+          outputVideoUrl: referenceVideoUrl,
+          outputImageUrl: null,
+          outputMimeType: 'video/mp4',
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+
+      res.json({
+        request_id: requestId,
+        style_id: styleId,
+        user_id: userId,
+        input: {
+          path: inputPath,
+          url: userImageSource,
+        },
+        output: {
+          id: generatedId,
+          path: null,
+          url: referenceVideoUrl,
+          mimeType: 'video/mp4',
+        },
+        provider_text: null,
+      });
+    } catch (error) {
+      logger.error({ err: error }, 'Video generation request failed');
+      const message = (error as Error)?.message || 'Video generation failed';
+      res.status(500).json({
+        error: 'internal_error',
         message,
       });
     }
