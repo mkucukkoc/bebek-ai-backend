@@ -71,10 +71,12 @@ export const createStylesRouter = () => {
     n14: `Vertical newborn baby styled as tiny astronaut, soft space-themed background, cinematic lighting, ultra cute futuristic newborn portrait, photorealistic ${NEWBORN_IDENTITY_SUFFIX}`,
   };
   const DEFAULT_VIDEO_REFERENCE_URL =
-    'https://firebasestorage.googleapis.com/v0/b/bebek-ai.firebasestorage.app/o/assets%2Fvideos%2FWhatsApp%20Video%202026-02-16%20at%2020.05.15.mp4?alt=media&token=7d69ba45-549f-492c-92fe-41eac3fa6356';
+    'https://firebasestorage.googleapis.com/v0/b/bebek-ai.firebasestorage.app/o/assets%2Fvideos%2Fucan.mp4?alt=media&token=2cfb0fc5-63aa-4a5c-9bea-51bfd78aeb28';
   const VIDEO_REFERENCE_URL_BY_STYLE_ID: Record<string, string> = {
-    v1: 'https://firebasestorage.googleapis.com/v0/b/bebek-ai.firebasestorage.app/o/assets%2Fvideos%2FWhatsApp%20Video%202026-02-16%20at%2020.05.15.mp4?alt=media&token=7d69ba45-549f-492c-92fe-41eac3fa6356',
-    v2: 'https://firebasestorage.googleapis.com/v0/b/bebek-ai.firebasestorage.app/o/assets%2Fvideos%2FWhatsApp%20Video%202026-02-16%20at%2020.05.15.mp4?alt=media&token=7d69ba45-549f-492c-92fe-41eac3fa6356',
+    v1: 'https://firebasestorage.googleapis.com/v0/b/bebek-ai.firebasestorage.app/o/assets%2Fvideos%2Fguzeloyun.mp4?alt=media',
+    v2: 'https://firebasestorage.googleapis.com/v0/b/bebek-ai.firebasestorage.app/o/assets%2Fvideos%2Fhavada.mp4?alt=media',
+    v3: 'https://firebasestorage.googleapis.com/v0/b/bebek-ai.firebasestorage.app/o/assets%2Fvideos%2Foyun.mp4?alt=media',
+    v4: 'https://firebasestorage.googleapis.com/v0/b/bebek-ai.firebasestorage.app/o/assets%2Fvideos%2Fucan.mp4?alt=media&token=2cfb0fc5-63aa-4a5c-9bea-51bfd78aeb28',
   };
 
   const resolveStylePrompt = (styleId: string | null) => {
@@ -85,6 +87,8 @@ export const createStylesRouter = () => {
     if (!styleId) return DEFAULT_VIDEO_REFERENCE_URL;
     return VIDEO_REFERENCE_URL_BY_STYLE_ID[styleId] || DEFAULT_VIDEO_REFERENCE_URL;
   };
+  const preview = (value: string | null | undefined, max = 220) =>
+    value ? value.slice(0, max) : null;
 
   const normalizeKey = (value: string) =>
     value
@@ -248,11 +252,34 @@ export const createStylesRouter = () => {
       const requestedModel = typeof req.body?.model === 'string' ? req.body.model : undefined;
       const stylePrompt = resolveStylePrompt(styleId);
 
+      logger.info({
+        requestId,
+        step: 'photo_generate_request_received',
+        userId: authReq.user.id,
+        styleId,
+        hasImageFile: Boolean(fileRequest.file),
+        imageMimeType: fileRequest.file?.mimetype || null,
+        imageBytes: fileRequest.file?.size || null,
+        model: requestedModel || process.env.FAL_IMAGE_MODEL || 'fal-ai/bytedance/seedream/v4/edit',
+      }, 'Style photo generation request received');
+
       if (!fileRequest.file) {
+        logger.warn({
+          requestId,
+          step: 'photo_generate_rejected_missing_image',
+          userId: authReq.user.id,
+          styleId,
+        }, 'Style photo generation rejected due to missing image');
         res.status(400).json({ error: 'invalid_request', message: 'image file is required' });
         return;
       }
       if (!stylePrompt) {
+        logger.warn({
+          requestId,
+          step: 'photo_generate_rejected_invalid_style',
+          userId: authReq.user.id,
+          styleId,
+        }, 'Style photo generation rejected due to invalid style id');
         res.status(400).json({
           error: 'invalid_request',
           message: `A valid style_id is required (received: ${styleId || 'none'})`,
@@ -267,6 +294,15 @@ export const createStylesRouter = () => {
         model: requestedModel,
       });
 
+      logger.info({
+        requestId,
+        step: 'photo_generate_provider_completed',
+        userId: authReq.user.id,
+        styleId,
+        outputMimeType: generated.mimeType || null,
+        outputBase64Length: generated.data?.length || 0,
+      }, 'Style photo generation provider completed');
+
       res.json({
         request_id: requestId,
         style_id: styleId,
@@ -278,7 +314,11 @@ export const createStylesRouter = () => {
         provider_text: generated.text || null,
       });
     } catch (error) {
-      logger.error({ err: error }, 'Style photo generation failed');
+      logger.error({
+        err: error,
+        step: 'photo_generate_failed',
+        requestId: typeof req.body?.request_id === 'string' ? req.body.request_id : (req.header('x-request-id') || null),
+      }, 'Style photo generation failed');
       const message = (error as Error)?.message || 'Style photo generation failed';
       const lowered = message.toLowerCase();
       const isConfigIssue = lowered.includes('gemini_api_key') || lowered.includes('fal_key');
@@ -312,7 +352,24 @@ export const createStylesRouter = () => {
         : (req.header('x-request-id') || null);
       const requestedModel = typeof req.body?.model === 'string' ? req.body.model : undefined;
 
+      logger.info({
+        requestId,
+        step: 'newborn_generate_request_received',
+        userId,
+        styleId,
+        hasImageFile: Boolean(fileRequest.file),
+        imageBytes: fileRequest.file?.size || null,
+        userImageSourcePreview: preview(userImageSource),
+        model: requestedModel || process.env.FAL_IMAGE_MODEL || 'fal-ai/bytedance/seedream/v4/edit',
+      }, 'Newborn generation request received');
+
       if (!styleId || !styleId.startsWith('n') || !baseStylePrompt) {
+        logger.warn({
+          requestId,
+          step: 'newborn_generate_rejected_invalid_style',
+          userId,
+          styleId,
+        }, 'Newborn generation rejected due to invalid style id');
         res.status(400).json({
           error: 'invalid_request',
           message: `A valid newborn style_id is required (received: ${styleId || 'none'})`,
@@ -320,6 +377,12 @@ export const createStylesRouter = () => {
         return;
       }
       if (!fileRequest.file && !userImageSource) {
+        logger.warn({
+          requestId,
+          step: 'newborn_generate_rejected_missing_image',
+          userId,
+          styleId,
+        }, 'Newborn generation rejected due to missing image input');
         res.status(400).json({ error: 'invalid_request', message: 'image file or user_image_url is required' });
         return;
       }
@@ -352,6 +415,13 @@ export const createStylesRouter = () => {
       }
 
       if (!userInputBuffer) {
+        logger.warn({
+          requestId,
+          step: 'newborn_generate_rejected_unresolved_image',
+          userId,
+          styleId,
+          userImageSourcePreview: preview(userImageSource),
+        }, 'Newborn generation rejected because user image could not be resolved');
         res.status(400).json({ error: 'invalid_request', message: 'User image could not be loaded' });
         return;
       }
@@ -445,7 +515,11 @@ export const createStylesRouter = () => {
         provider_text: generated.text || null,
       });
     } catch (error) {
-      logger.error({ err: error }, 'Newborn style photo generation failed');
+      logger.error({
+        err: error,
+        step: 'newborn_generate_failed',
+        requestId: typeof req.body?.request_id === 'string' ? req.body.request_id : (req.header('x-request-id') || null),
+      }, 'Newborn style photo generation failed');
       const message = (error as Error)?.message || 'Newborn style photo generation failed';
       const lowered = message.toLowerCase();
       const isConfigIssue = lowered.includes('gemini_api_key') || lowered.includes('fal_key');
@@ -477,7 +551,23 @@ export const createStylesRouter = () => {
       const requestedModel = typeof req.body?.model === 'string' ? req.body.model : undefined;
 
       const referenceVideoUrl = resolveVideoReferenceUrl(styleId);
+      const resolvedByStyleMap = Boolean(styleId && VIDEO_REFERENCE_URL_BY_STYLE_ID[styleId]);
+      logger.info({
+        requestId,
+        step: 'video_reference_resolved',
+        userId,
+        styleId,
+        resolvedByStyleMap,
+        usedDefaultReference: !resolvedByStyleMap,
+        referenceVideoUrlPreview: preview(referenceVideoUrl),
+      }, 'Video reference URL resolved');
       if (!referenceVideoUrl) {
+        logger.warn({
+          requestId,
+          step: 'video_generate_rejected_missing_reference',
+          userId,
+          styleId,
+        }, 'Video generation rejected due to unresolved reference URL');
         res.status(400).json({
           error: 'invalid_request',
           message: 'Video URL could not be resolved',
@@ -486,6 +576,12 @@ export const createStylesRouter = () => {
       }
 
       if (!userImageSource) {
+        logger.warn({
+          requestId,
+          step: 'video_generate_rejected_missing_user_image',
+          userId,
+          styleId,
+        }, 'Video generation rejected due to missing user image');
         res.status(400).json({ error: 'invalid_request', message: 'user_image_url is required' });
         return;
       }
@@ -496,8 +592,8 @@ export const createStylesRouter = () => {
         userId,
         styleId,
         model: requestedModel || process.env.FAL_VIDEO_MODEL || 'fal-ai/pixverse/swap',
-        userImageUrlPreview: userImageSource.slice(0, 220),
-        referenceVideoUrlPreview: referenceVideoUrl.slice(0, 220),
+        userImageUrlPreview: preview(userImageSource),
+        referenceVideoUrlPreview: preview(referenceVideoUrl),
       }, 'Video generation request received');
 
       const providerResult = await generateStyledVideoWithVeo({
@@ -514,7 +610,7 @@ export const createStylesRouter = () => {
         styleId,
         usedFallback: providerResult.usedFallback,
         providerStatus: providerResult.providerStatus,
-        outputVideoUrlPreview: providerResult.outputVideoUrl.slice(0, 220),
+        outputVideoUrlPreview: preview(providerResult.outputVideoUrl),
       }, 'Video generation provider step completed');
 
       const generatedId = randomUUID();
@@ -578,8 +674,12 @@ export const createStylesRouter = () => {
       logger.info({
         requestId,
         step: 'video_generate_persisted',
+        userId,
+        styleId,
         generatedId,
         inputPath,
+        outputVideoPath,
+        usedFallback: providerResult.usedFallback,
       }, 'Video generation result persisted');
 
       res.json({
@@ -599,7 +699,12 @@ export const createStylesRouter = () => {
         provider_text: providerResult.providerText || null,
       });
     } catch (error) {
-      logger.error({ err: error }, 'Video generation request failed');
+      logger.error({
+        err: error,
+        step: 'video_generate_failed',
+        requestId: typeof req.body?.request_id === 'string' ? req.body.request_id : (req.header('x-request-id') || null),
+        styleId: typeof req.body?.style_id === 'string' ? req.body.style_id : null,
+      }, 'Video generation request failed');
       const message = (error as Error)?.message || 'Video generation failed';
       res.status(500).json({
         error: 'internal_error',
@@ -617,6 +722,7 @@ export const createStylesRouter = () => {
       }
 
       const userId = authReq.user.id;
+      logger.info({ userId, step: 'history_list_request_received' }, 'Generated history list request received');
       const snapshot = await db
         .collection('users')
         .doc(userId)
@@ -651,6 +757,11 @@ export const createStylesRouter = () => {
         };
       });
 
+      logger.info({
+        userId,
+        step: 'history_list_completed',
+        count: items.length,
+      }, 'Generated history list completed');
       res.json({ items });
     } catch (error) {
       logger.error({ err: error }, 'Failed to fetch generated history');
@@ -672,6 +783,7 @@ export const createStylesRouter = () => {
         res.status(400).json({ error: 'invalid_request', message: 'History id is required' });
         return;
       }
+      logger.info({ userId, id, step: 'history_delete_request_received' }, 'Generated history delete request received');
 
       const ref = db.collection('users').doc(userId).collection('generatedPhotos').doc(id);
       const snap = await ref.get();
@@ -694,6 +806,12 @@ export const createStylesRouter = () => {
       }
 
       await ref.delete();
+      logger.info({
+        userId,
+        id,
+        step: 'history_delete_completed',
+        deletedStoragePathsCount: paths.length,
+      }, 'Generated history delete completed');
       res.json({ success: true, id });
     } catch (error) {
       logger.error({ err: error }, 'Failed to delete generated history item');
