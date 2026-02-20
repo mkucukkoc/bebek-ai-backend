@@ -13,6 +13,13 @@ export const createAddChildRouter = () => {
   const router = Router();
   attachRouteLogger(router, 'add-child');
 
+  const setNoCacheHeaders = (res: any) => {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+    res.set('Surrogate-Control', 'no-store');
+  };
+
   router.post('/', authenticateToken, async (req, res) => {
     try {
       const authReq = req as AuthRequest;
@@ -60,7 +67,8 @@ export const createAddChildRouter = () => {
         { userId: authReq.user.id, childId: ref.id, childName: payload.name, step: 'add_child_saved' },
         'AddChild saved to Firebase',
       );
-      res.json({ success: true, child });
+      setNoCacheHeaders(res);
+      res.status(200).json({ success: true, child });
     } catch (error) {
       logger.error({ err: error, step: 'add_child_error' }, 'AddChild failed');
       res.status(500).json({ error: 'internal_error', message: 'AddChild failed' });
@@ -95,7 +103,8 @@ export const createAddChildRouter = () => {
         { userId: authReq.user.id, childrenCount: children.length, step: 'list_children_success' },
         'Children list loaded',
       );
-      res.json({ success: true, children });
+      setNoCacheHeaders(res);
+      res.status(200).json({ success: true, children });
     } catch (error) {
       logger.error({ err: error, step: 'list_children_error' }, 'List children failed');
       res.status(500).json({ error: 'internal_error', message: 'List children failed' });
