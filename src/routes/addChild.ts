@@ -79,13 +79,18 @@ export const createAddChildRouter = () => {
       const snapshot = await db
         .collection('AddChild')
         .where('parentUuid', '==', authReq.user.id)
-        .orderBy('createdAt', 'desc')
         .get();
 
-      const children = snapshot.docs.map((doc: QueryDocumentSnapshot<DocumentData>) => ({
-        id: doc.id,
-        ...(doc.data() as any),
-      }));
+      const children = snapshot.docs
+        .map((doc: QueryDocumentSnapshot<DocumentData>) => ({
+          id: doc.id,
+          ...(doc.data() as any),
+        }))
+        .sort((a: any, b: any) => {
+          const aTs = typeof a?.createdAt === 'string' ? Date.parse(a.createdAt) : 0;
+          const bTs = typeof b?.createdAt === 'string' ? Date.parse(b.createdAt) : 0;
+          return bTs - aTs;
+        });
       logger.info(
         { userId: authReq.user.id, childrenCount: children.length, step: 'list_children_success' },
         'Children list loaded',
