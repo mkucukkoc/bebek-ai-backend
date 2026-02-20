@@ -64,18 +64,48 @@ export const listChatSessions = async (userId: string) => {
   const snapshot = await db
     .collection('chat_sessions')
     .where('user_id', '==', userId)
-    .orderBy('updated_at', 'desc')
     .get();
-  return snapshot.docs.map((doc: QueryDocumentSnapshot<DocumentData>) => ({ id: doc.id, ...doc.data() }));
+  const sessions = snapshot.docs.map((doc: QueryDocumentSnapshot<DocumentData>) => ({ id: doc.id, ...doc.data() as any }));
+  const sessionsWithPreview = await Promise.all(
+    sessions.map(async (session: any) => {
+      const msgSnap = await db
+        .collection('chat_messages')
+        .where('session_id', '==', session.id)
+        .get();
+      const msgs = msgSnap.docs
+        .map((doc: QueryDocumentSnapshot<DocumentData>) => doc.data() as any)
+        .sort((a: any, b: any) => {
+          const aTs = typeof a?.created_at === 'string' ? Date.parse(a.created_at) : 0;
+          const bTs = typeof b?.created_at === 'string' ? Date.parse(b.created_at) : 0;
+          return aTs - bTs;
+        });
+      const last = msgs[msgs.length - 1];
+      return {
+        ...session,
+        lastMessage: typeof last?.content === 'string' ? last.content : null,
+        updated_at: session.updated_at || last?.created_at || session.created_at || null,
+      };
+    }),
+  );
+  return sessionsWithPreview.sort((a: any, b: any) => {
+    const aTs = typeof a?.updated_at === 'string' ? Date.parse(a.updated_at) : 0;
+    const bTs = typeof b?.updated_at === 'string' ? Date.parse(b.updated_at) : 0;
+    return bTs - aTs;
+  });
 };
 
 export const listChatMessages = async (sessionId: string) => {
   const snapshot = await db
     .collection('chat_messages')
     .where('session_id', '==', sessionId)
-    .orderBy('created_at', 'asc')
     .get();
-  return snapshot.docs.map((doc: QueryDocumentSnapshot<DocumentData>) => ({ id: doc.id, ...doc.data() }));
+  return snapshot.docs
+    .map((doc: QueryDocumentSnapshot<DocumentData>) => ({ id: doc.id, ...doc.data() as any }))
+    .sort((a: any, b: any) => {
+      const aTs = typeof a?.created_at === 'string' ? Date.parse(a.created_at) : 0;
+      const bTs = typeof b?.created_at === 'string' ? Date.parse(b.created_at) : 0;
+      return aTs - bTs;
+    });
 };
 
 const getChatMemorySummary = async (userId: string) => {
@@ -95,16 +125,22 @@ const maybeUpdateSummary = async (userId: string, sessionId: string) => {
   const messagesSnapshot = await db
     .collection('chat_messages')
     .where('session_id', '==', sessionId)
-    .orderBy('created_at', 'desc')
-    .limit(50)
     .get();
 
-  if (messagesSnapshot.size < 50) {
+  const sortedMessages = messagesSnapshot.docs
+    .map((doc: QueryDocumentSnapshot<DocumentData>) => doc.data() as any)
+    .sort((a: any, b: any) => {
+      const aTs = typeof a?.created_at === 'string' ? Date.parse(a.created_at) : 0;
+      const bTs = typeof b?.created_at === 'string' ? Date.parse(b.created_at) : 0;
+      return bTs - aTs;
+    })
+    .slice(0, 50);
+
+  if (sortedMessages.length < 50) {
     return;
   }
 
-  const messages = messagesSnapshot.docs.map((doc: QueryDocumentSnapshot<DocumentData>) => doc.data() as any).reverse();
-  const summaryInput = messages
+  const summaryInput = [...sortedMessages].reverse()
     .map((msg: { role?: string; content?: string }) => `${msg.role === 'assistant' ? 'Koç' : 'Kullanıcı'}: ${msg.content ?? ''}`)
     .join('\n');
 
@@ -274,11 +310,17 @@ const prepareChatContext = async (params: {
   const recentMessagesSnapshot = await db
     .collection('chat_messages')
     .where('session_id', '==', session.id)
-    .orderBy('created_at', 'desc')
-    .limit(20)
     .get();
 
-  const recentMessages = recentMessagesSnapshot.docs.map((doc: QueryDocumentSnapshot<DocumentData>) => doc.data() as any).reverse();
+  const recentMessages = recentMessagesSnapshot.docs
+    .map((doc: QueryDocumentSnapshot<DocumentData>) => doc.data() as any)
+    .sort((a: any, b: any) => {
+      const aTs = typeof a?.created_at === 'string' ? Date.parse(a.created_at) : 0;
+      const bTs = typeof b?.created_at === 'string' ? Date.parse(b.created_at) : 0;
+      return bTs - aTs;
+    })
+    .slice(0, 20)
+    .reverse();
   const memorySummary = await getChatMemorySummary(user.id);
 
   const context = await buildContext(user, memorySummary, recentMessages, message, contextTags || null, imageMeta);
