@@ -58,6 +58,7 @@ import { createPasswordResetRouter } from './routes/passwordReset';
 import { createDeleteAccountRouter } from './routes/deleteAccount';
 import { createPremiumRouter } from './routes/premium';
 import { createStylesRouter } from './routes/styles';
+import { createAddChildRouter } from './routes/addChild';
 // Chat router: resolve robustly to avoid ESM/CJS interop issues in Render
 // We intentionally avoid static import here
 import notificationRouter from './routes/notifications';
@@ -228,6 +229,7 @@ const startServer = async () => {
       mountRouter(`/api/${API_VERSION}/chat`, createChatRouter, 'chat');
     }
     mountRouter(`/api/${API_VERSION}/styles`, createStylesRouter, 'styles');
+    mountRouter(`/api/${API_VERSION}/AddChild`, createAddChildRouter, 'AddChild');
 
 
     // Legacy routes (backward compatibility)
@@ -246,6 +248,7 @@ const startServer = async () => {
       mountRouter('/api/chat', createChatRouter, 'chat (api legacy)');
     }
     mountRouter('/api/styles', createStylesRouter, 'styles (api legacy)');
+    mountRouter('/AddChild', createAddChildRouter, 'AddChild (legacy)');
     mountRouterInstance('/notifications', notificationRouter, 'notifications');
 
     // 404 handler (must be before error handler)

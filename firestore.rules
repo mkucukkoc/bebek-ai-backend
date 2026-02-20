@@ -27,6 +27,16 @@ service cloud.firestore {
       // Public read for email verification (opsiyonel)
       allow read: if resource.data.email != null;
     }
+
+    // Premium user state used on HomeScreen (read-only from app)
+    match /premiumusers/{userId} {
+      allow read: if request.auth != null;
+    }
+
+    // Daily usage counters read by UsageLimitService
+    match /usage_limits/{dateKey}/users/{userId} {
+      allow read: if request.auth != null;
+    }
     
     // Sessions collection - Session yönetimi
     match /sessions/{sessionId} {

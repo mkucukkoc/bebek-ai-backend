@@ -38,6 +38,28 @@ export const createChatSession = async (userId: string) => {
   return { id: ref.id, ...session };
 };
 
+export const createChildChatSession = async (params: {
+  userId: string;
+  childId: string;
+  childName: string;
+}) => {
+  const now = new Date().toISOString();
+  const session = {
+    user_id: params.userId,
+    child_id: params.childId,
+    child_name: params.childName,
+    status: 'open',
+    created_at: now,
+    updated_at: now,
+  };
+  const ref = await db.collection('chat_sessions').add(session);
+  logger.info(
+    { userId: params.userId, childId: params.childId, childName: params.childName, sessionId: ref.id },
+    'Child chat session created',
+  );
+  return { id: ref.id, ...session };
+};
+
 export const listChatSessions = async (userId: string) => {
   const snapshot = await db
     .collection('chat_sessions')
@@ -105,15 +127,126 @@ const maybeUpdateSummary = async (userId: string, sessionId: string) => {
   }
 };
 
-const buildContext = async (user: UserInfo, memorySummary: any, recentMessages: any[], currentMessage: string) => {
+const toText = (value: unknown, fallback = '-') => {
+  if (typeof value !== 'string') return fallback;
+  const trimmed = value.trim();
+  return trimmed || fallback;
+};
+
+const buildToneGuideTr = (tone: string) => {
+  switch (tone) {
+    case 'formal':
+      return 'Profesyonel, net ve yapılandırılmış bir üslup kullan.';
+    case 'friendly':
+      return 'Sıcak, destekleyici ve aile dostu bir üslup kullan.';
+    case 'concise':
+      return 'Gereksiz uzatmadan, kısa ve net cümlelerle yanıt ver.';
+    case 'inspiring':
+      return 'Motive edici ve umut veren bir anlatım kullan.';
+    case 'joyful':
+      return 'Neşeli, pozitif ve enerji veren bir ton kullan.';
+    case 'listener':
+      return 'Empatik, nazik ve iyi dinleyen bir rehber gibi konuş.';
+    default:
+      return 'Neşeli, uyumlu ve ebeveyni güçlendiren bir üslup kullan.';
+  }
+};
+
+const buildLengthGuideTr = (length: string) => {
+  switch (length) {
+    case 'short':
+      return 'Yanıtı kısa ve doğrudan ver.';
+    case 'detailed':
+      return 'Yanıtı detaylı, adım adım ve açıklayıcı ver.';
+    default:
+      return 'Yanıtı dengeli uzunlukta ver.';
+  }
+};
+
+const buildEmojiGuideTr = (emojiStyle: string) => {
+  switch (emojiStyle) {
+    case 'none':
+      return 'Emoji kullanma.';
+    case 'rich':
+      return 'Uygun yerlerde bol ve sıcak emoji kullan.';
+    default:
+      return 'Dengeli ve ölçülü emoji kullan.';
+  }
+};
+
+const buildContext = async (
+  user: UserInfo,
+  memorySummary: any,
+  recentMessages: any[],
+  currentMessage: string,
+  contextTags?: Record<string, unknown> | null,
+  imageMeta?: { mimeType?: string } | null,
+) => {
 
   const userContext = `Kullanıcı: ${user.name || 'Bilinmiyor'}, Hedef: ${user.goal || 'maintain'}, Boy/Kilo: ${user.height_cm || '-'} / ${user.current_weight_kg || '-'}`;
   const memory = `Hafıza Özeti: ${memorySummary?.summary || 'Yeni kullanıcı, sıcak karşıla.'}`;
+  const childProfile = (contextTags?.childProfile as any) || null;
+  const childContext = childProfile
+    ? `Secili Bebek: ${childProfile.name || '-'}, Cinsiyet: ${childProfile.gender || '-'}, Dogum Tarihi: ${childProfile.birthDate || '-'}`
+    : 'Secili Bebek: belirtilmedi';
+  const personalization = (contextTags?.chatPersonalization as any) || null;
+  const toneContext = personalization
+    ? `Sohbet Ayari: tone=${personalization.tone || '-'}, mood=${personalization.mood || '-'}, cevap_uzunlugu=${personalization.responseLength || '-'}, emoji=${personalization.emojiStyle || '-'}`
+    : 'Sohbet Ayari: varsayilan';
+  const tone = toText(personalization?.tone, 'default');
+  const mood = toText(personalization?.mood, 'cheerful');
+  const responseLength = toText(personalization?.responseLength, 'balanced');
+  const emojiStyle = toText(personalization?.emojiStyle, 'some');
+  const hasImage = Boolean(imageMeta?.mimeType);
   const history = recentMessages
     .map((msg: { role?: string; content?: string }) => `${msg.role === 'assistant' ? 'Koç' : 'Kullanıcı'}: ${msg.content ?? ''}`)
     .join('\n');
 
-  return `${userContext}\n---\n${memory}\n---\nSon Konuşmalar:\n${history}\n---\nYeni Mesaj: ${currentMessage}`;
+  const babyInstruction = childProfile
+    ? `Seçili bebek bilgisi: İsim=${toText(childProfile.name, 'Belirtilmedi')}, Cinsiyet=${toText(
+        childProfile.gender,
+        'Belirtilmedi',
+      )}, Doğum Tarihi=${toText(childProfile.birthDate, 'Belirtilmedi')}. Yanıtını bu bebeğe göre kişiselleştir.`
+    : 'Seçili bebek yok. Ebeveyni genel ve güvenli şekilde yönlendir.';
+
+  return [
+    'ROL:',
+    "Sen 'Bebek AI' adında, ebeveynlere destek veren uzman bir bebek gelişimi ve ebeveynlik asistanısın.",
+    '',
+    'ZORUNLU DİL KURALI:',
+    '- Tüm yanıtlar sadece Türkçe olmalı.',
+    '- İngilizce terim gerekiyorsa kısa Türkçe açıklamasıyla birlikte ver.',
+    '',
+    'KİŞİSELLEŞTİRME TALİMATLARI:',
+    `- Ton: ${buildToneGuideTr(tone)}`,
+    `- Ruh Hali (Mood): ${mood} (yanıta bu havayı doğal şekilde yansıt).`,
+    `- Uzunluk: ${buildLengthGuideTr(responseLength)}`,
+    `- Emoji: ${buildEmojiGuideTr(emojiStyle)}`,
+    '',
+    'BEBEK BAĞLAMI:',
+    `- ${babyInstruction}`,
+    '',
+    'GÜVENLİK KURALLARI:',
+    '- Önce güvenlik: Acil risk olabilecek belirtilerde nazikçe doktora/acile yönlendir.',
+    '- Spesifik ilaç dozu veya tıbbi reçete verme.',
+    '- Kesin tanı koyma; bilgilendirici ve yönlendirici kal.',
+    '',
+    'GÖRSEL KURALI:',
+    hasImage
+      ? '- Kullanıcı görsel paylaştı. Görselde gördüğün ifadeyi/bağlamı Türkçe ve nazik biçimde yorumla; kesin tıbbi tanı koyma.'
+      : '- Bu istekte görsel yok.',
+    '',
+    'EK BAĞLAM:',
+    `- ${userContext}`,
+    `- ${childContext}`,
+    `- ${toneContext}`,
+    `- ${memory}`,
+    '',
+    'SON KONUŞMALAR:',
+    history || '-',
+    '',
+    `YENİ MESAJ: ${currentMessage}`,
+  ].join('\n');
 };
 
 const prepareChatContext = async (params: {
@@ -148,7 +281,17 @@ const prepareChatContext = async (params: {
   const recentMessages = recentMessagesSnapshot.docs.map((doc: QueryDocumentSnapshot<DocumentData>) => doc.data() as any).reverse();
   const memorySummary = await getChatMemorySummary(user.id);
 
-  const context = await buildContext(user, memorySummary, recentMessages, message);
+  const context = await buildContext(user, memorySummary, recentMessages, message, contextTags || null, imageMeta);
+  logger.info(
+    {
+      userId: user.id,
+      sessionId: session.id,
+      hasChildProfile: Boolean((contextTags as any)?.childProfile),
+      hasChatPersonalization: Boolean((contextTags as any)?.chatPersonalization),
+      step: 'chat_context_built',
+    },
+    'Chat context built with personalization',
+  );
   const history = recentMessages.map((item: { role?: string; content?: string }) => ({ role: item.role, content: item.content }));
 
   return {
