@@ -13,10 +13,87 @@ import { logger } from '../utils/logger';
 import { attachRouteLogger } from '../utils/routeLogger';
 
 const DEFAULT_CHAT_SETTINGS = {
-  tone: 'default',
-  mood: 'cheerful',
-  responseLength: 'balanced',
-  emojiStyle: 'some',
+  tone: 'varsayilan',
+  mood: 'neseli',
+  responseLength: 'dengeli',
+  emojiStyle: 'dengeli',
+};
+
+const normalizeAssistantSettingValue = (value: unknown, fallback: string) => {
+  if (typeof value !== 'string') return fallback;
+  const normalized = value.trim();
+  return normalized || fallback;
+};
+
+const normalizeAssistantSettingsInput = (payload: any) => {
+  const toneRaw = normalizeAssistantSettingValue(payload?.tone, DEFAULT_CHAT_SETTINGS.tone).toLowerCase();
+  const moodRaw = normalizeAssistantSettingValue(payload?.mood, DEFAULT_CHAT_SETTINGS.mood).toLowerCase();
+  const responseLengthRaw = normalizeAssistantSettingValue(
+    payload?.responseLength,
+    DEFAULT_CHAT_SETTINGS.responseLength,
+  ).toLowerCase();
+  const emojiStyleRaw = normalizeAssistantSettingValue(payload?.emojiStyle, DEFAULT_CHAT_SETTINGS.emojiStyle).toLowerCase();
+
+  const toneMap: Record<string, string> = {
+    default: 'varsayilan',
+    varsayilan: 'varsayilan',
+    'varsayılan': 'varsayilan',
+    friendly: 'cana_yakin',
+    cana_yakin: 'cana_yakin',
+    buddy: 'arkadas_gibi',
+    arkadas_gibi: 'arkadas_gibi',
+    inspiring: 'ilham_verici',
+    ilham_verici: 'ilham_verici',
+    joyful: 'neseli',
+    neseli: 'neseli',
+    'neşeli': 'neseli',
+    listener: 'iyi_dinleyici',
+    iyi_dinleyici: 'iyi_dinleyici',
+    concise: 'net_ve_kisa',
+    net_ve_kisa: 'net_ve_kisa',
+    formal: 'profesyonel',
+    profesyonel: 'profesyonel',
+  };
+  const moodMap: Record<string, string> = {
+    cheerful: 'neseli',
+    neseli: 'neseli',
+    'neşeli': 'neseli',
+    calm: 'sakin',
+    sakin: 'sakin',
+    playful: 'oyuncu',
+    oyuncu: 'oyuncu',
+    serious: 'ciddi',
+    ciddi: 'ciddi',
+    angry: 'sinirli',
+    sinirli: 'sinirli',
+    'sinirli ': 'sinirli',
+  };
+  const responseMap: Record<string, string> = {
+    short: 'kisa',
+    kisa: 'kisa',
+    'kısa': 'kisa',
+    balanced: 'dengeli',
+    dengeli: 'dengeli',
+    detailed: 'detayli',
+    detayli: 'detayli',
+    'detaylı': 'detayli',
+  };
+  const emojiMap: Record<string, string> = {
+    none: 'emoji_yok',
+    yok: 'emoji_yok',
+    emoji_yok: 'emoji_yok',
+    some: 'dengeli',
+    dengeli: 'dengeli',
+    rich: 'bol_emoji',
+    bol_emoji: 'bol_emoji',
+  };
+
+  return {
+    tone: toneMap[toneRaw] || DEFAULT_CHAT_SETTINGS.tone,
+    mood: moodMap[moodRaw] || DEFAULT_CHAT_SETTINGS.mood,
+    responseLength: responseMap[responseLengthRaw] || DEFAULT_CHAT_SETTINGS.responseLength,
+    emojiStyle: emojiMap[emojiStyleRaw] || DEFAULT_CHAT_SETTINGS.emojiStyle,
+  };
 };
 
 export const createChatRouter = () => {
@@ -164,12 +241,7 @@ export const createChatRouter = () => {
       }
 
       const data = settingsDoc.data() || {};
-      const settings = {
-        tone: data.tone || DEFAULT_CHAT_SETTINGS.tone,
-        mood: data.mood || DEFAULT_CHAT_SETTINGS.mood,
-        responseLength: data.responseLength || DEFAULT_CHAT_SETTINGS.responseLength,
-        emojiStyle: data.emojiStyle || DEFAULT_CHAT_SETTINGS.emojiStyle,
-      };
+      const settings = normalizeAssistantSettingsInput(data);
       logger.info({ userId: authReq.user.id, step: 'get_assistant_settings_success', settings }, 'Assistant settings loaded');
       res.json({ success: true, exists: true, settings });
     } catch (error) {
@@ -186,18 +258,8 @@ export const createChatRouter = () => {
         return;
       }
 
-      const { tone, mood, responseLength, emojiStyle } = req.body || {};
       const now = new Date().toISOString();
-      const settings = {
-        tone: typeof tone === 'string' && tone.trim() ? tone.trim() : DEFAULT_CHAT_SETTINGS.tone,
-        mood: typeof mood === 'string' && mood.trim() ? mood.trim() : DEFAULT_CHAT_SETTINGS.mood,
-        responseLength:
-          typeof responseLength === 'string' && responseLength.trim()
-            ? responseLength.trim()
-            : DEFAULT_CHAT_SETTINGS.responseLength,
-        emojiStyle:
-          typeof emojiStyle === 'string' && emojiStyle.trim() ? emojiStyle.trim() : DEFAULT_CHAT_SETTINGS.emojiStyle,
-      };
+      const settings = normalizeAssistantSettingsInput(req.body || {});
 
       logger.info({ userId: authReq.user.id, step: 'save_assistant_settings_request', settings }, 'Saving assistant settings');
       await db.collection('ChatSettings').doc(authReq.user.id).set(

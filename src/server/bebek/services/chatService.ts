@@ -170,18 +170,25 @@ const toText = (value: unknown, fallback = '-') => {
 };
 
 const buildToneGuideTr = (tone: string) => {
-  switch (tone) {
+  switch (tone.trim().toLowerCase()) {
     case 'formal':
+    case 'profesyonel':
       return 'Profesyonel, net ve yapılandırılmış bir üslup kullan.';
     case 'friendly':
+    case 'cana_yakin':
       return 'Sıcak, destekleyici ve aile dostu bir üslup kullan.';
     case 'concise':
+    case 'net_ve_kisa':
       return 'Gereksiz uzatmadan, kısa ve net cümlelerle yanıt ver.';
     case 'inspiring':
+    case 'ilham_verici':
       return 'Motive edici ve umut veren bir anlatım kullan.';
     case 'joyful':
+    case 'neseli':
+    case 'neşeli':
       return 'Neşeli, pozitif ve enerji veren bir ton kullan.';
     case 'listener':
+    case 'iyi_dinleyici':
       return 'Empatik, nazik ve iyi dinleyen bir rehber gibi konuş.';
     default:
       return 'Neşeli, uyumlu ve ebeveyni güçlendiren bir üslup kullan.';
@@ -189,10 +196,14 @@ const buildToneGuideTr = (tone: string) => {
 };
 
 const buildLengthGuideTr = (length: string) => {
-  switch (length) {
+  switch (length.trim().toLowerCase()) {
     case 'short':
+    case 'kisa':
+    case 'kısa':
       return 'Yanıtı kısa ve doğrudan ver.';
     case 'detailed':
+    case 'detayli':
+    case 'detaylı':
       return 'Yanıtı detaylı, adım adım ve açıklayıcı ver.';
     default:
       return 'Yanıtı dengeli uzunlukta ver.';
@@ -200,10 +211,13 @@ const buildLengthGuideTr = (length: string) => {
 };
 
 const buildEmojiGuideTr = (emojiStyle: string) => {
-  switch (emojiStyle) {
+  switch (emojiStyle.trim().toLowerCase()) {
     case 'none':
+    case 'emoji_yok':
+    case 'yok':
       return 'Emoji kullanma.';
     case 'rich':
+    case 'bol_emoji':
       return 'Uygun yerlerde bol ve sıcak emoji kullan.';
     default:
       return 'Dengeli ve ölçülü emoji kullan.';
@@ -229,10 +243,10 @@ const buildContext = async (
   const toneContext = personalization
     ? `Sohbet Ayari: tone=${personalization.tone || '-'}, mood=${personalization.mood || '-'}, cevap_uzunlugu=${personalization.responseLength || '-'}, emoji=${personalization.emojiStyle || '-'}`
     : 'Sohbet Ayari: varsayilan';
-  const tone = toText(personalization?.tone, 'default');
-  const mood = toText(personalization?.mood, 'cheerful');
-  const responseLength = toText(personalization?.responseLength, 'balanced');
-  const emojiStyle = toText(personalization?.emojiStyle, 'some');
+  const tone = toText(personalization?.tone, 'varsayilan');
+  const mood = toText(personalization?.mood, 'neseli');
+  const responseLength = toText(personalization?.responseLength, 'dengeli');
+  const emojiStyle = toText(personalization?.emojiStyle, 'dengeli');
   const hasImage = Boolean(imageMeta?.mimeType);
   const history = recentMessages
     .map((msg: { role?: string; content?: string }) => `${msg.role === 'assistant' ? 'Koç' : 'Kullanıcı'}: ${msg.content ?? ''}`)
