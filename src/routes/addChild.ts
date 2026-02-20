@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import type { DocumentData, QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { authenticateToken, AuthRequest } from '../middleware/authMiddleware';
 import { db } from '../firebase';
 import { logger } from '../utils/logger';
@@ -81,7 +82,10 @@ export const createAddChildRouter = () => {
         .orderBy('createdAt', 'desc')
         .get();
 
-      const children = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
+      const children = snapshot.docs.map((doc: QueryDocumentSnapshot<DocumentData>) => ({
+        id: doc.id,
+        ...(doc.data() as any),
+      }));
       logger.info(
         { userId: authReq.user.id, childrenCount: children.length, step: 'list_children_success' },
         'Children list loaded',
