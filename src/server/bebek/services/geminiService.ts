@@ -61,6 +61,54 @@ const extractImageUrlFromFalResponse = (payload: any): string | undefined => {
   return undefined;
 };
 
+const runHalfMoonFaceSwap = async (params: {
+  model: string;
+  sourceFaceUrl: string;
+  targetImageUrl: string;
+  enableOcclusionPrevention?: boolean;
+  falDebugId: string;
+  step: string;
+}) => {
+  const input = {
+    source_face_url: params.sourceFaceUrl,
+    target_image_url: params.targetImageUrl,
+    enable_occlusion_prevention: Boolean(params.enableOcclusionPrevention),
+  };
+  logger.info(
+    {
+      falDebugId: params.falDebugId,
+      step: `${params.step}_request_prepared`,
+      model: params.model,
+      input: {
+        source_face_url: summarizeImageUrl(input.source_face_url),
+        target_image_url: summarizeImageUrl(input.target_image_url),
+        enable_occlusion_prevention: input.enable_occlusion_prevention,
+      },
+    },
+    'FAL half-moon face swap request prepared',
+  );
+  const result: any = await fal.subscribe(params.model, {
+    input,
+    logs: true,
+  });
+  logger.info(
+    {
+      falDebugId: params.falDebugId,
+      step: `${params.step}_response_received`,
+      model: params.model,
+      requestId: result?.requestId || result?.request_id || null,
+      rawResult: result,
+    },
+    'FAL half-moon face swap response received',
+  );
+  const outputUrl = extractImageUrlFromFalResponse(result);
+  if (!outputUrl) {
+    logger.error({ falDebugId: params.falDebugId, step: params.step, result }, 'FAL half-moon face swap missing output URL');
+    throw new Error('FAL returned no output image URL for half-moon face swap');
+  }
+  return outputUrl;
+};
+
 const downloadImageAsBase64 = async (url: string) => {
   const response = await axios.get<ArrayBuffer>(url, { responseType: 'arraybuffer' });
   const mimeType = (response.headers['content-type'] as string) || 'image/jpeg';
@@ -519,15 +567,6 @@ export const generateWeddingStyledPhotoWithTemplate = async (params: {
     `Template stili notu: ${params.prompt}\n\n` +
     'Ultra gercekci, yuksek cozunurluk, dogal cilt dokusu.';
 
-  const falInput = {
-    source_face_url_1: params.motherImageUrl,
-    source_gender_1: 'female' as const,
-    source_face_url_2: params.fatherImageUrl,
-    source_gender_2: 'male' as const,
-    target_image_url: params.templateImageUrl,
-    enable_occlusion_prevention: false,
-  };
-
   const falDebugId = createFalDebugId();
   logger.info(
     {
@@ -537,31 +576,32 @@ export const generateWeddingStyledPhotoWithTemplate = async (params: {
       promptForwardedToModel: false,
       imageCount: 3,
       imageSummaries: [
-        summarizeImageUrl(falInput.source_face_url_1),
-        summarizeImageUrl(falInput.source_face_url_2),
-        summarizeImageUrl(falInput.target_image_url),
+        summarizeImageUrl(params.motherImageUrl),
+        summarizeImageUrl(params.fatherImageUrl),
+        summarizeImageUrl(params.templateImageUrl),
       ],
     },
     'FAL wedding style generation request prepared',
   );
 
-  const result: any = await fal.subscribe(resolvedModel, {
-    input: falInput,
-    logs: true,
+  // half-moon image endpoint expects single source_face_url + target_image_url.
+  // For two-identity templates, run two sequential swaps.
+  const firstSwapUrl = await runHalfMoonFaceSwap({
+    model: resolvedModel,
+    sourceFaceUrl: params.motherImageUrl,
+    targetImageUrl: params.templateImageUrl,
+    enableOcclusionPrevention: false,
+    falDebugId,
+    step: 'wedding_swap_mother',
   });
-  logger.info(
-    {
-      falDebugId,
-      model: resolvedModel,
-      requestId: result?.requestId || result?.request_id || null,
-      rawResult: result,
-    },
-    'FAL wedding style generation response received',
-  );
-  const outputUrl = extractImageUrlFromFalResponse(result);
-  if (!outputUrl) {
-    throw new Error('FAL returned no output image URL for wedding generation');
-  }
+  const outputUrl = await runHalfMoonFaceSwap({
+    model: resolvedModel,
+    sourceFaceUrl: params.fatherImageUrl,
+    targetImageUrl: firstSwapUrl,
+    enableOcclusionPrevention: false,
+    falDebugId,
+    step: 'wedding_swap_father',
+  });
 
   const outputResponse = await axios.get<ArrayBuffer>(outputUrl, { responseType: 'arraybuffer' });
   const outputMimeType = (outputResponse.headers['content-type'] as string) || 'image/png';
@@ -626,14 +666,6 @@ export const generateCoupleStyledPhotoWithTemplate = async (params: {
     `Template stili notu: ${params.prompt}\n\n` +
     'Ultra gercekci, yuksek cozunurluk, dogal cilt dokusu.';
 
-  const falInput = {
-    source_face_url_1: params.firstImageUrl,
-    source_gender_1: 'female' as const,
-    source_face_url_2: params.secondImageUrl,
-    source_gender_2: 'male' as const,
-    target_image_url: params.templateImageUrl,
-    enable_occlusion_prevention: false,
-  };
   const falDebugId = createFalDebugId();
   logger.info(
     {
@@ -643,37 +675,30 @@ export const generateCoupleStyledPhotoWithTemplate = async (params: {
       promptForwardedToModel: false,
       imageCount: 3,
       imageSummaries: [
-        summarizeImageUrl(falInput.source_face_url_1),
-        summarizeImageUrl(falInput.source_face_url_2),
-        summarizeImageUrl(falInput.target_image_url),
+        summarizeImageUrl(params.firstImageUrl),
+        summarizeImageUrl(params.secondImageUrl),
+        summarizeImageUrl(params.templateImageUrl),
       ],
-      input: {
-        source_gender_1: falInput.source_gender_1,
-        source_gender_2: falInput.source_gender_2,
-        enable_occlusion_prevention: falInput.enable_occlusion_prevention,
-      },
+      input: { enable_occlusion_prevention: false },
     },
     'FAL couple style generation request prepared',
   );
-
-  const result: any = await fal.subscribe(resolvedModel, {
-    input: falInput,
-    logs: true,
+  const firstSwapUrl = await runHalfMoonFaceSwap({
+    model: resolvedModel,
+    sourceFaceUrl: params.firstImageUrl,
+    targetImageUrl: params.templateImageUrl,
+    enableOcclusionPrevention: false,
+    falDebugId,
+    step: 'couple_swap_first',
   });
-  logger.info(
-    {
-      falDebugId,
-      model: resolvedModel,
-      requestId: result?.requestId || result?.request_id || null,
-      rawResult: result,
-    },
-    'FAL couple style generation response received',
-  );
-  const outputUrl = extractImageUrlFromFalResponse(result);
-  if (!outputUrl) {
-    logger.error({ falDebugId, result }, 'FAL couple style generation missing output URL');
-    throw new Error('FAL returned no output image URL for couple generation');
-  }
+  const outputUrl = await runHalfMoonFaceSwap({
+    model: resolvedModel,
+    sourceFaceUrl: params.secondImageUrl,
+    targetImageUrl: firstSwapUrl,
+    enableOcclusionPrevention: false,
+    falDebugId,
+    step: 'couple_swap_second',
+  });
 
   const outputResponse = await axios.get<ArrayBuffer>(outputUrl, { responseType: 'arraybuffer' });
   const outputMimeType = (outputResponse.headers['content-type'] as string) || 'image/png';
