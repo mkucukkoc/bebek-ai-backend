@@ -485,6 +485,9 @@ export const generateWeddingStyledPhotoWithTemplate = async (params: {
     'Cilt tonu sahne isigina uyumlu olmali.\n' +
     'Boyun ve sac cizgileri dogal gecis yapmali.\n' +
     "Yuz ifadeleri template'teki mimikle ayni kalmali.\n" +
+    'Kamera biraz daha geriden olsun; asiri yakin plan kullanma.\n' +
+    'Orta cekim (medium shot) kadraj kullan; iki yuz de ekrana tam sigsin.\n' +
+    'Iki yuz de net ve keskin gorunsun, blur veya crop olmasin.\n' +
     'Kiyafet, arka plan, poz ve kadraj kesinlikle degismemeli.\n' +
     'Ekstra detay ekleme, sahneyi yeniden olusturma.\n' +
     'Sadece yuz swap islemi yap.\n\n' +
@@ -572,6 +575,9 @@ export const generateCoupleStyledPhotoWithTemplate = async (params: {
     'Cilt tonu sahne isigina uyumlu olmali.\n' +
     'Boyun ve sac cizgileri dogal gecis yapmali.\n' +
     "Yuz ifadeleri template'teki mimikle ayni kalmali.\n" +
+    'Kamera biraz daha geriden olsun; asiri yakin plan kullanma.\n' +
+    'Orta cekim (medium shot) kadraj kullan; iki yuz de ekrana tam sigsin.\n' +
+    'Iki yuz de net ve keskin gorunsun, blur veya crop olmasin.\n' +
     'Kiyafet, arka plan, poz ve kadraj kesinlikle degismemeli.\n' +
     'Ekstra detay ekleme, sahneyi yeniden olusturma.\n' +
     'Sadece yuz swap islemi yap.\n\n' +
