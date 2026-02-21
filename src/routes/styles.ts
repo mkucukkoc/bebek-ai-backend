@@ -863,7 +863,7 @@ export const createStylesRouter = () => {
       const promptForGeneration =
         promptOverride
         || selectedTemplate?.prompt
-        || 'Do not change the template background at all. Only face swap: apply mother and father faces from input photos onto the two people in template, while keeping composition, clothes, pose and lighting exactly the same.';
+        || 'Face swap the two input identities into the two people in the template while preserving template scene exactly.';
       const now = Date.now();
       const firstExt = extFromMime(firstResolved.mimeType || 'image/jpeg');
       const secondExt = extFromMime(secondResolved.mimeType || 'image/jpeg');

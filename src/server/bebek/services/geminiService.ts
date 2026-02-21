@@ -566,25 +566,20 @@ export const generateCoupleStyledPhotoWithTemplate = async (params: {
   const templateDataUri = `data:${params.templateMimeType};base64,${params.templateImageBase64}`;
 
   const finalPromptText =
-    'TASK: Strict face swap only. Use TEMPLATE PHOTO as the immutable base image.\n\n' +
+    'TASK: Face-swap based couple generation with strict template preservation.\n\n' +
     'INPUTS:\n' +
-    '1) MOTHER PHOTO: identity source for the woman in template.\n' +
-    '2) FATHER PHOTO: identity source for the man in template.\n' +
-    '3) TEMPLATE PHOTO: must remain unchanged.\n\n' +
+    '1) PERSON 1 PHOTO -> use as identity source for the person in template (female slot if present).\n' +
+    '2) PERSON 2 PHOTO -> use as identity source for the person in template (male slot if present).\n' +
+    '3) TEMPLATE PHOTO -> this is the scene master and must stay unchanged.\n\n' +
     `STYLE BRIEF:\n${params.prompt}\n\n` +
-    'ABSOLUTE RULES (HIGHEST PRIORITY):\n' +
-    '- Do NOT change template background at all.\n' +
-    '- Do NOT change composition, camera angle, framing, pose, body positions, clothes, accessories, lighting, shadows, colors, or scene geometry.\n' +
-    '- Do NOT retouch, restyle, beautify, or regenerate the scene.\n' +
-    '- Replace ONLY faces:\n' +
-    '  - swap mother\'s face onto the female face in template,\n' +
-    '  - swap father\'s face onto the male face in template.\n' +
-    '- Keep all non-face pixels from template exactly the same.\n' +
-    '- Do not add/remove people or objects.\n' +
-    '- Keep realistic skin texture, face proportions, and natural blending.\n' +
-    '- Final output must look like the same template photo with only the two faces changed.\n\n' +
-    'OUTPUT:\n' +
-    '- Exactly 1 ultra-realistic image.';
+    'HARD CONSTRAINTS:\n' +
+    '- Keep template composition, camera angle, framing, pose, background, clothes and lighting unchanged.\n' +
+    '- Perform identity replacement on faces only.\n' +
+    '- Do not alter environment, props or scene geometry.\n' +
+    '- Keep both full faces visible, realistic and sharp.\n' +
+    '- Preserve natural skin texture and anatomy.\n' +
+    '- Do not add/remove people.\n' +
+    '- Return exactly one ultra-realistic image.';
 
   const falInput = {
     prompt: finalPromptText,
