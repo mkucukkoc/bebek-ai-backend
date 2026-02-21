@@ -11,7 +11,12 @@ const DEFAULT_GEMINI_SUMMARY_MODEL = process.env.GEMINI_SUMMARY_MODEL
   || process.env.GEMINI_MODEL
   || 'gemini-2.5-flash';
 const DEFAULT_FAL_IMAGE_MODEL = process.env.FAL_IMAGE_MODEL || 'fal-ai/bytedance/seedream/v4/edit';
-const DEFAULT_FAL_COUPLE_IMAGE_MODEL = process.env.FAL_COUPLE_IMAGE_MODEL || DEFAULT_FAL_IMAGE_MODEL;
+const DEFAULT_FAL_FACE_SWAP_IMAGE_MODEL =
+  process.env.FAL_FACE_SWAP_IMAGE_MODEL || 'fal-ai/flux-pro/kontext/max/multi';
+const DEFAULT_FAL_WEDDING_IMAGE_MODEL =
+  process.env.FAL_WEDDING_IMAGE_MODEL || process.env.FAL_FACE_SWAP_IMAGE_MODEL || DEFAULT_FAL_FACE_SWAP_IMAGE_MODEL;
+const DEFAULT_FAL_COUPLE_IMAGE_MODEL =
+  process.env.FAL_COUPLE_IMAGE_MODEL || process.env.FAL_FACE_SWAP_IMAGE_MODEL || DEFAULT_FAL_FACE_SWAP_IMAGE_MODEL;
 
 const getApiKey = () => process.env.GEMINI_API_KEY || '';
 const getFalKey = () => process.env.FAL_KEY || process.env.FAL_API_KEY || '';
@@ -456,7 +461,16 @@ export const generateWeddingStyledPhotoWithTemplate = async (params: {
   prompt: string;
   model?: string;
 }) => {
-  const resolvedModel = params.model || DEFAULT_FAL_IMAGE_MODEL;
+  const resolvedModel = DEFAULT_FAL_WEDDING_IMAGE_MODEL;
+  if (params.model && params.model !== resolvedModel) {
+    logger.warn(
+      {
+        requestedModel: params.model,
+        forcedModel: resolvedModel,
+      },
+      'Wedding generation model override ignored; face-swap model is enforced',
+    );
+  }
   const falKey = getFalKey();
 
   if (!falKey) {
@@ -546,7 +560,16 @@ export const generateCoupleStyledPhotoWithTemplate = async (params: {
   prompt: string;
   model?: string;
 }) => {
-  const resolvedModel = params.model || DEFAULT_FAL_COUPLE_IMAGE_MODEL;
+  const resolvedModel = DEFAULT_FAL_COUPLE_IMAGE_MODEL;
+  if (params.model && params.model !== resolvedModel) {
+    logger.warn(
+      {
+        requestedModel: params.model,
+        forcedModel: resolvedModel,
+      },
+      'Couple generation model override ignored; face-swap model is enforced',
+    );
+  }
   const falKey = getFalKey();
 
   if (!falKey) {
