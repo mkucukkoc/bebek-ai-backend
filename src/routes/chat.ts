@@ -4,10 +4,12 @@ import { db } from '../firebase';
 import { ensureUserInfo } from '../server/bebek/services/userInfoService';
 import {
   createChildChatSession,
+  deleteChatSession,
   handleChatMessage,
   handleChatMessageStream,
   listChatMessages,
   listChatSessions,
+  renameChatSession,
 } from '../server/bebek/services/chatService';
 import { logger } from '../utils/logger';
 import { attachRouteLogger } from '../utils/routeLogger';
@@ -186,6 +188,65 @@ export const createChatRouter = () => {
     } catch (error) {
       logger.error({ err: error }, 'Failed to list chat messages');
       res.status(500).json({ error: 'internal_error', message: 'Failed to list chat messages' });
+    }
+  });
+
+  router.delete('/sessions/:id', authenticateToken, async (req, res) => {
+    try {
+      const authReq = req as AuthRequest;
+      if (!authReq.user) {
+        res.status(401).json({ error: 'access_denied', message: 'Authentication required' });
+        return;
+      }
+      const sessionId = String(req.params.id || '').trim();
+      if (!sessionId) {
+        res.status(400).json({ error: 'invalid_request', message: 'session id is required' });
+        return;
+      }
+
+      const result = await deleteChatSession(authReq.user.id, sessionId);
+      if (!result.deleted && result.reason === 'not_found') {
+        res.status(404).json({ error: 'not_found', message: 'Session not found' });
+        return;
+      }
+      if (!result.deleted && result.reason === 'forbidden') {
+        res.status(403).json({ error: 'forbidden', message: 'Session does not belong to user' });
+        return;
+      }
+      res.json({ success: true, id: sessionId, messagesDeleted: result.messagesDeleted || 0 });
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to delete chat session');
+      res.status(500).json({ error: 'internal_error', message: 'Failed to delete chat session' });
+    }
+  });
+
+  router.patch('/sessions/:id/title', authenticateToken, async (req, res) => {
+    try {
+      const authReq = req as AuthRequest;
+      if (!authReq.user) {
+        res.status(401).json({ error: 'access_denied', message: 'Authentication required' });
+        return;
+      }
+      const sessionId = String(req.params.id || '').trim();
+      const title = String(req.body?.title || '').trim();
+      if (!sessionId || !title) {
+        res.status(400).json({ error: 'invalid_request', message: 'session id and title are required' });
+        return;
+      }
+
+      const result = await renameChatSession(authReq.user.id, sessionId, title);
+      if (!result.updated && result.reason === 'not_found') {
+        res.status(404).json({ error: 'not_found', message: 'Session not found' });
+        return;
+      }
+      if (!result.updated && result.reason === 'forbidden') {
+        res.status(403).json({ error: 'forbidden', message: 'Session does not belong to user' });
+        return;
+      }
+      res.json({ success: true, id: sessionId, title });
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to rename chat session');
+      res.status(500).json({ error: 'internal_error', message: 'Failed to rename chat session' });
     }
   });
 

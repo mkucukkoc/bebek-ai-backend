@@ -61,6 +61,14 @@ export const createChildChatSession = async (params: {
 };
 
 export const listChatSessions = async (userId: string) => {
+  const childSnapshot = await db
+    .collection('AddChild')
+    .where('parentUuid', '==', userId)
+    .get();
+  const childById = new Map<string, any>(
+    childSnapshot.docs.map((doc: QueryDocumentSnapshot<DocumentData>) => [doc.id, { id: doc.id, ...(doc.data() as any) }]),
+  );
+
   const snapshot = await db
     .collection('chat_sessions')
     .where('user_id', '==', userId)
@@ -80,8 +88,12 @@ export const listChatSessions = async (userId: string) => {
           return aTs - bTs;
         });
       const last = msgs[msgs.length - 1];
+      const child = session?.child_id ? childById.get(String(session.child_id)) : null;
       return {
         ...session,
+        child_name: child?.name || session.child_name || null,
+        child_avatar: child?.avatarUri || null,
+        title: session.custom_title || child?.name || session.child_name || 'Genel Danismanlik',
         lastMessage: typeof last?.content === 'string' ? last.content : null,
         updated_at: session.updated_at || last?.created_at || session.created_at || null,
       };
@@ -92,6 +104,51 @@ export const listChatSessions = async (userId: string) => {
     const bTs = typeof b?.updated_at === 'string' ? Date.parse(b.updated_at) : 0;
     return bTs - aTs;
   });
+};
+
+export const deleteChatSession = async (userId: string, sessionId: string) => {
+  const sessionRef = db.collection('chat_sessions').doc(sessionId);
+  const sessionDoc = await sessionRef.get();
+  if (!sessionDoc.exists) {
+    return { deleted: false, reason: 'not_found' as const };
+  }
+  const sessionData = sessionDoc.data() as any;
+  if (sessionData?.user_id !== userId) {
+    return { deleted: false, reason: 'forbidden' as const };
+  }
+
+  const messagesSnapshot = await db
+    .collection('chat_messages')
+    .where('session_id', '==', sessionId)
+    .get();
+
+  const batch = db.batch();
+  messagesSnapshot.docs.forEach((doc: QueryDocumentSnapshot<DocumentData>) => batch.delete(doc.ref));
+  batch.delete(sessionRef);
+  await batch.commit();
+
+  return { deleted: true as const, messagesDeleted: messagesSnapshot.size };
+};
+
+export const renameChatSession = async (userId: string, sessionId: string, title: string) => {
+  const sessionRef = db.collection('chat_sessions').doc(sessionId);
+  const sessionDoc = await sessionRef.get();
+  if (!sessionDoc.exists) {
+    return { updated: false, reason: 'not_found' as const };
+  }
+  const sessionData = sessionDoc.data() as any;
+  if (sessionData?.user_id !== userId) {
+    return { updated: false, reason: 'forbidden' as const };
+  }
+
+  await sessionRef.set(
+    {
+      custom_title: title.trim(),
+      updated_at: new Date().toISOString(),
+    },
+    { merge: true },
+  );
+  return { updated: true as const };
 };
 
 export const listChatMessages = async (sessionId: string) => {
