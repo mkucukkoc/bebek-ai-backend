@@ -776,7 +776,6 @@ export const createStylesRouter = () => {
       const bucket: any = storage.bucket();
       const motherResolved = await downloadImageFromSource(bucket, motherImageSource);
       const fatherResolved = await downloadImageFromSource(bucket, fatherImageSource);
-      const templateResolved = await downloadImageFromSource(bucket, selectedTemplate.storagePath);
       logger.info(
         {
           userId,
@@ -805,14 +804,14 @@ export const createStylesRouter = () => {
         resumable: false,
         metadata: { cacheControl: 'public,max-age=31536000' },
       });
+      const motherInputUrl = await getSignedOrPublicUrl(motherInputPath);
+      const fatherInputUrl = await getSignedOrPublicUrl(fatherInputPath);
+      const templateUrl = selectedTemplate.imageUrl;
 
       const generated = await generateWeddingStyledPhotoWithTemplate({
-        motherImageBase64: motherResolved.buffer.toString('base64'),
-        motherMimeType: motherResolved.mimeType || 'image/jpeg',
-        fatherImageBase64: fatherResolved.buffer.toString('base64'),
-        fatherMimeType: fatherResolved.mimeType || 'image/jpeg',
-        templateImageBase64: templateResolved.buffer.toString('base64'),
-        templateMimeType: templateResolved.mimeType || 'image/jpeg',
+        motherImageUrl: motherInputUrl,
+        fatherImageUrl: fatherInputUrl,
+        templateImageUrl: templateUrl,
         prompt: selectedTemplate.prompt,
         model: requestedModel,
       });
@@ -828,9 +827,6 @@ export const createStylesRouter = () => {
       });
 
       const outputUrl = await getSignedOrPublicUrl(generatedPath);
-      const motherInputUrl = await getSignedOrPublicUrl(motherInputPath);
-      const fatherInputUrl = await getSignedOrPublicUrl(fatherInputPath);
-      const templateUrl = selectedTemplate.imageUrl;
 
       await db
         .collection('users')
@@ -996,14 +992,17 @@ export const createStylesRouter = () => {
         resumable: false,
         metadata: { cacheControl: 'public,max-age=31536000' },
       });
+      const firstInputUrl = await getSignedOrPublicUrl(firstInputPath);
+      const secondInputUrl = await getSignedOrPublicUrl(secondInputPath);
+      const templateStoragePathForModel = resolveStorageObjectPath(templateSourceToUse);
+      const templateModelUrl = templateStoragePathForModel
+        ? await getSignedOrPublicUrl(templateStoragePathForModel)
+        : templateSourceToUse;
 
       const generated = await generateCoupleStyledPhotoWithTemplate({
-        firstImageBase64: firstResolved.buffer.toString('base64'),
-        firstMimeType: firstResolved.mimeType || 'image/jpeg',
-        secondImageBase64: secondResolved.buffer.toString('base64'),
-        secondMimeType: secondResolved.mimeType || 'image/jpeg',
-        templateImageBase64: templateResolved.buffer.toString('base64'),
-        templateMimeType: templateResolved.mimeType || 'image/jpeg',
+        firstImageUrl: firstInputUrl,
+        secondImageUrl: secondInputUrl,
+        templateImageUrl: templateModelUrl,
         prompt: promptForGeneration,
         model: requestedModel,
       });
@@ -1019,8 +1018,6 @@ export const createStylesRouter = () => {
       });
 
       const outputUrl = await getSignedOrPublicUrl(generatedPath);
-      const firstInputUrl = await getSignedOrPublicUrl(firstInputPath);
-      const secondInputUrl = await getSignedOrPublicUrl(secondInputPath);
       const templateStoragePath =
         selectedTemplate?.storagePath
         || resolveStorageObjectPath(templateSourceToUse)

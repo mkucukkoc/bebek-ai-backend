@@ -61,6 +61,13 @@ const extractImageUrlFromFalResponse = (payload: any): string | undefined => {
   return undefined;
 };
 
+const downloadImageAsBase64 = async (url: string) => {
+  const response = await axios.get<ArrayBuffer>(url, { responseType: 'arraybuffer' });
+  const mimeType = (response.headers['content-type'] as string) || 'image/jpeg';
+  const data = Buffer.from(response.data as any).toString('base64');
+  return { data, mimeType };
+};
+
 type GeminiResponse = {
   candidates?: Array<{
     content?: {
@@ -461,12 +468,9 @@ export const generateStyledPhotoWithTemplate = async (params: {
 };
 
 export const generateWeddingStyledPhotoWithTemplate = async (params: {
-  motherImageBase64: string;
-  motherMimeType: string;
-  fatherImageBase64: string;
-  fatherMimeType: string;
-  templateImageBase64: string;
-  templateMimeType: string;
+  motherImageUrl: string;
+  fatherImageUrl: string;
+  templateImageUrl: string;
   prompt: string;
   model?: string;
 }) => {
@@ -485,9 +489,10 @@ export const generateWeddingStyledPhotoWithTemplate = async (params: {
   if (!falKey) {
     if (process.env.NODE_ENV !== 'production') {
       logger.warn('FAL_KEY missing; returning mother image as generated output in non-production');
+      const fallback = await downloadImageAsBase64(params.motherImageUrl);
       return {
-        data: params.motherImageBase64,
-        mimeType: params.motherMimeType,
+        data: fallback.data,
+        mimeType: fallback.mimeType,
         text: 'Mock response used because FAL_KEY is missing',
       };
     }
@@ -495,9 +500,6 @@ export const generateWeddingStyledPhotoWithTemplate = async (params: {
   }
 
   ensureFalConfigured();
-  const motherDataUri = `data:${params.motherMimeType};base64,${params.motherImageBase64}`;
-  const fatherDataUri = `data:${params.fatherMimeType};base64,${params.fatherImageBase64}`;
-  const templateDataUri = `data:${params.templateMimeType};base64,${params.templateImageBase64}`;
 
   const finalPromptText =
     'Verilen template fotograftaki sahneyi, arka plani, isigi, pozisyonu, kamera acisini ve kiyafetleri tamamen koru.\n\n' +
@@ -518,11 +520,11 @@ export const generateWeddingStyledPhotoWithTemplate = async (params: {
     'Ultra gercekci, yuksek cozunurluk, dogal cilt dokusu.';
 
   const falInput = {
-    source_face_url_1: motherDataUri,
+    source_face_url_1: params.motherImageUrl,
     source_gender_1: 'female' as const,
-    source_face_url_2: fatherDataUri,
+    source_face_url_2: params.fatherImageUrl,
     source_gender_2: 'male' as const,
-    target_image_url: templateDataUri,
+    target_image_url: params.templateImageUrl,
     enable_occlusion_prevention: false,
   };
 
@@ -564,12 +566,9 @@ export const generateWeddingStyledPhotoWithTemplate = async (params: {
 };
 
 export const generateCoupleStyledPhotoWithTemplate = async (params: {
-  firstImageBase64: string;
-  firstMimeType: string;
-  secondImageBase64: string;
-  secondMimeType: string;
-  templateImageBase64: string;
-  templateMimeType: string;
+  firstImageUrl: string;
+  secondImageUrl: string;
+  templateImageUrl: string;
   prompt: string;
   model?: string;
 }) => {
@@ -588,9 +587,10 @@ export const generateCoupleStyledPhotoWithTemplate = async (params: {
   if (!falKey) {
     if (process.env.NODE_ENV !== 'production') {
       logger.warn('FAL_KEY missing; returning first person image as generated output in non-production');
+      const fallback = await downloadImageAsBase64(params.firstImageUrl);
       return {
-        data: params.firstImageBase64,
-        mimeType: params.firstMimeType,
+        data: fallback.data,
+        mimeType: fallback.mimeType,
         text: 'Mock response used because FAL_KEY is missing',
       };
     }
@@ -598,9 +598,6 @@ export const generateCoupleStyledPhotoWithTemplate = async (params: {
   }
 
   ensureFalConfigured();
-  const firstDataUri = `data:${params.firstMimeType};base64,${params.firstImageBase64}`;
-  const secondDataUri = `data:${params.secondMimeType};base64,${params.secondImageBase64}`;
-  const templateDataUri = `data:${params.templateMimeType};base64,${params.templateImageBase64}`;
 
   const finalPromptText =
     'Verilen template fotograftaki sahneyi, arka plani, isigi, pozisyonu, kamera acisini ve kiyafetleri tamamen koru.\n\n' +
@@ -621,11 +618,11 @@ export const generateCoupleStyledPhotoWithTemplate = async (params: {
     'Ultra gercekci, yuksek cozunurluk, dogal cilt dokusu.';
 
   const falInput = {
-    source_face_url_1: firstDataUri,
+    source_face_url_1: params.firstImageUrl,
     source_gender_1: 'female' as const,
-    source_face_url_2: secondDataUri,
+    source_face_url_2: params.secondImageUrl,
     source_gender_2: 'male' as const,
-    target_image_url: templateDataUri,
+    target_image_url: params.templateImageUrl,
     enable_occlusion_prevention: false,
   };
 
