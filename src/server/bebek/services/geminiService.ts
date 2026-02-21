@@ -549,6 +549,15 @@ export const generateWeddingStyledPhotoWithTemplate = async (params: {
     input: falInput,
     logs: true,
   });
+  logger.info(
+    {
+      falDebugId,
+      model: resolvedModel,
+      requestId: result?.requestId || result?.request_id || null,
+      rawResult: result,
+    },
+    'FAL wedding style generation response received',
+  );
   const outputUrl = extractImageUrlFromFalResponse(result);
   if (!outputUrl) {
     throw new Error('FAL returned no output image URL for wedding generation');
@@ -625,13 +634,44 @@ export const generateCoupleStyledPhotoWithTemplate = async (params: {
     target_image_url: params.templateImageUrl,
     enable_occlusion_prevention: false,
   };
+  const falDebugId = createFalDebugId();
+  logger.info(
+    {
+      falDebugId,
+      model: resolvedModel,
+      finalPromptLength: finalPromptText.length,
+      promptForwardedToModel: false,
+      imageCount: 3,
+      imageSummaries: [
+        summarizeImageUrl(falInput.source_face_url_1),
+        summarizeImageUrl(falInput.source_face_url_2),
+        summarizeImageUrl(falInput.target_image_url),
+      ],
+      input: {
+        source_gender_1: falInput.source_gender_1,
+        source_gender_2: falInput.source_gender_2,
+        enable_occlusion_prevention: falInput.enable_occlusion_prevention,
+      },
+    },
+    'FAL couple style generation request prepared',
+  );
 
   const result: any = await fal.subscribe(resolvedModel, {
     input: falInput,
     logs: true,
   });
+  logger.info(
+    {
+      falDebugId,
+      model: resolvedModel,
+      requestId: result?.requestId || result?.request_id || null,
+      rawResult: result,
+    },
+    'FAL couple style generation response received',
+  );
   const outputUrl = extractImageUrlFromFalResponse(result);
   if (!outputUrl) {
+    logger.error({ falDebugId, result }, 'FAL couple style generation missing output URL');
     throw new Error('FAL returned no output image URL for couple generation');
   }
 

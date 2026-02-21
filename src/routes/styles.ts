@@ -135,6 +135,18 @@ export const createStylesRouter = () => {
 
   const normalizeKey = (value: string) =>
     value
+      .replace(/ı/g, 'i')
+      .replace(/İ/g, 'I')
+      .replace(/ş/g, 's')
+      .replace(/Ş/g, 'S')
+      .replace(/ğ/g, 'g')
+      .replace(/Ğ/g, 'G')
+      .replace(/ü/g, 'u')
+      .replace(/Ü/g, 'U')
+      .replace(/ö/g, 'o')
+      .replace(/Ö/g, 'O')
+      .replace(/ç/g, 'c')
+      .replace(/Ç/g, 'C')
       .normalize('NFKD')
       .replace(/[\u0300-\u036f]/g, '')
       .replace(/[^\w]/g, '')
