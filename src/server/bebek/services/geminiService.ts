@@ -11,12 +11,9 @@ const DEFAULT_GEMINI_SUMMARY_MODEL = process.env.GEMINI_SUMMARY_MODEL
   || process.env.GEMINI_MODEL
   || 'gemini-2.5-flash';
 const DEFAULT_FAL_IMAGE_MODEL = process.env.FAL_IMAGE_MODEL || 'fal-ai/bytedance/seedream/v4/edit';
-const DEFAULT_FAL_FACE_SWAP_IMAGE_MODEL =
-  process.env.FAL_FACE_SWAP_IMAGE_MODEL || 'fal-ai/flux-pro/kontext/max/multi';
-const DEFAULT_FAL_WEDDING_IMAGE_MODEL =
-  process.env.FAL_WEDDING_IMAGE_MODEL || process.env.FAL_FACE_SWAP_IMAGE_MODEL || DEFAULT_FAL_FACE_SWAP_IMAGE_MODEL;
-const DEFAULT_FAL_COUPLE_IMAGE_MODEL =
-  process.env.FAL_COUPLE_IMAGE_MODEL || process.env.FAL_FACE_SWAP_IMAGE_MODEL || DEFAULT_FAL_FACE_SWAP_IMAGE_MODEL;
+const ENFORCED_MULTI_REFERENCE_FACE_SWAP_MODEL = 'half-moon-ai/ai-face-swap/faceswapimage';
+const DEFAULT_FAL_WEDDING_IMAGE_MODEL = ENFORCED_MULTI_REFERENCE_FACE_SWAP_MODEL;
+const DEFAULT_FAL_COUPLE_IMAGE_MODEL = ENFORCED_MULTI_REFERENCE_FACE_SWAP_MODEL;
 
 const getApiKey = () => process.env.GEMINI_API_KEY || '';
 const getFalKey = () => process.env.FAL_KEY || process.env.FAL_API_KEY || '';
@@ -50,6 +47,18 @@ const summarizeImageUrl = (url: string) => {
     preview: url.slice(0, 180),
     totalLength: url.length,
   };
+};
+
+const extractImageUrlFromFalResponse = (payload: any): string | undefined => {
+  const url =
+    payload?.data?.image?.url
+    || payload?.image?.url
+    || payload?.data?.images?.[0]?.url
+    || payload?.images?.[0]?.url;
+  if (typeof url === 'string' && url.trim().length > 0) {
+    return url.trim();
+  }
+  return undefined;
 };
 
 type GeminiResponse = {
@@ -509,13 +518,12 @@ export const generateWeddingStyledPhotoWithTemplate = async (params: {
     'Ultra gercekci, yuksek cozunurluk, dogal cilt dokusu.';
 
   const falInput = {
-    prompt: finalPromptText,
-    image_urls: [motherDataUri, fatherDataUri, templateDataUri],
-    image_size: 'portrait_16_9' as const,
-    num_images: 1,
-    max_images: 1,
-    enhance_prompt_mode: 'standard' as const,
-    enable_safety_checker: true,
+    source_face_url_1: motherDataUri,
+    source_gender_1: 'female' as const,
+    source_face_url_2: fatherDataUri,
+    source_gender_2: 'male' as const,
+    target_image_url: templateDataUri,
+    enable_occlusion_prevention: false,
   };
 
   const falDebugId = createFalDebugId();
@@ -524,8 +532,13 @@ export const generateWeddingStyledPhotoWithTemplate = async (params: {
       falDebugId,
       model: resolvedModel,
       finalPromptLength: finalPromptText.length,
-      imageCount: falInput.image_urls.length,
-      imageSummaries: falInput.image_urls.map(summarizeImageUrl),
+      promptForwardedToModel: false,
+      imageCount: 3,
+      imageSummaries: [
+        summarizeImageUrl(falInput.source_face_url_1),
+        summarizeImageUrl(falInput.source_face_url_2),
+        summarizeImageUrl(falInput.target_image_url),
+      ],
     },
     'FAL wedding style generation request prepared',
   );
@@ -534,7 +547,7 @@ export const generateWeddingStyledPhotoWithTemplate = async (params: {
     input: falInput,
     logs: true,
   });
-  const outputUrl = result?.data?.images?.[0]?.url as string | undefined;
+  const outputUrl = extractImageUrlFromFalResponse(result);
   if (!outputUrl) {
     throw new Error('FAL returned no output image URL for wedding generation');
   }
@@ -608,20 +621,19 @@ export const generateCoupleStyledPhotoWithTemplate = async (params: {
     'Ultra gercekci, yuksek cozunurluk, dogal cilt dokusu.';
 
   const falInput = {
-    prompt: finalPromptText,
-    image_urls: [firstDataUri, secondDataUri, templateDataUri],
-    image_size: 'portrait_16_9' as const,
-    num_images: 1,
-    max_images: 1,
-    enhance_prompt_mode: 'standard' as const,
-    enable_safety_checker: true,
+    source_face_url_1: firstDataUri,
+    source_gender_1: 'female' as const,
+    source_face_url_2: secondDataUri,
+    source_gender_2: 'male' as const,
+    target_image_url: templateDataUri,
+    enable_occlusion_prevention: false,
   };
 
   const result: any = await fal.subscribe(resolvedModel, {
     input: falInput,
     logs: true,
   });
-  const outputUrl = result?.data?.images?.[0]?.url as string | undefined;
+  const outputUrl = extractImageUrlFromFalResponse(result);
   if (!outputUrl) {
     throw new Error('FAL returned no output image URL for couple generation');
   }
