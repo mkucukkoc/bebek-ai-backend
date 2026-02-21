@@ -311,6 +311,8 @@ export const generateStyledPhotoWithTemplate = async (params: {
     '- The baby must remain fully recognizable.\n\n' +
     'SCENE ADAPTATION:\n' +
     '- Match requested pose and camera distance from scene brief.\n' +
+    '- Use medium-shot framing with camera slightly farther.\n' +
+    '- Keep full face visible and sharp. Do not crop face.\n' +
     '- Match lighting direction and softness.\n' +
     '- Match depth of field.\n' +
     '- Maintain natural body proportions.\n' +
@@ -483,6 +485,8 @@ export const generateWeddingStyledPhotoWithTemplate = async (params: {
     'RULES:\n' +
     '- Keep both parents facial identity unchanged.\n' +
     '- Place both persons naturally into the template wedding scene.\n' +
+    '- Use medium-shot framing. Keep camera slightly farther from subjects.\n' +
+    '- Do not crop faces. Keep both full faces clearly visible and sharp.\n' +
     '- Keep realistic skin tones, anatomy and lighting.\n' +
     '- Do not create extra people.\n' +
     '- Keep result ultra realistic, premium wedding photography style.\n' +
@@ -570,6 +574,8 @@ export const generateCoupleStyledPhotoWithTemplate = async (params: {
     'RULES:\n' +
     '- Keep both persons facial identity unchanged.\n' +
     '- Place both persons naturally into the template couple scene.\n' +
+    '- Use medium-shot framing. Keep camera slightly farther from subjects.\n' +
+    '- Do not crop faces. Keep both full faces clearly visible and sharp.\n' +
     '- Keep realistic skin tones, anatomy and lighting.\n' +
     '- Do not create extra people.\n' +
     '- Keep result ultra realistic, premium couple photography style.\n' +

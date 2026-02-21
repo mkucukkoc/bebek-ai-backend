@@ -50,6 +50,8 @@ export const createStylesRouter = () => {
     'Use mother and father uploaded photos as the ONLY identity references. Keep both faces and identities exactly, preserve facial structure and skin tone, and place both naturally into the wedding template scene. Ultra-realistic wedding photography.';
   const COUPLE_IDENTITY_SUFFIX =
     'Use two uploaded person photos as the ONLY identity references. Keep both faces and identities exactly, preserve facial structure and skin tone, and place both naturally into the couple template scene. Ultra-realistic couple photography.';
+  const FRAMING_SUFFIX =
+    'Use medium-shot framing with camera slightly farther from subjects. Keep faces fully visible and sharp. Do not crop faces.';
 
   const STYLE_PROMPT_BY_ID: Record<string, string> = {
     l1: `Vertical 9:16 elegant family portrait with baby, luxury classic interior, neutral beige tones, soft cinematic lighting, parents wearing modern formal clothing, baby centered, high fashion lifestyle photography, photorealistic, editorial style ${LIFESTYLE_IDENTITY_SUFFIX}`,
@@ -91,7 +93,9 @@ export const createStylesRouter = () => {
 
   const resolveStylePrompt = (styleId: string | null) => {
     if (!styleId) return null;
-    return STYLE_PROMPT_BY_ID[styleId] || null;
+    const base = STYLE_PROMPT_BY_ID[styleId] || null;
+    if (!base) return null;
+    return `${base} ${FRAMING_SUFFIX}`;
   };
   const resolveVideoReferenceUrl = (styleId: string | null) => {
     if (!styleId) return DEFAULT_VIDEO_REFERENCE_URL;
@@ -284,7 +288,7 @@ export const createStylesRouter = () => {
           fileName,
           storagePath: file.name,
           imageUrl,
-          prompt: `${toWeddingTitle(fileName)} dugun konsepti, premium kompozisyon. ${WEDDING_IDENTITY_SUFFIX}`,
+          prompt: `${toWeddingTitle(fileName)} dugun konsepti, premium kompozisyon. ${FRAMING_SUFFIX} ${WEDDING_IDENTITY_SUFFIX}`,
         };
       }),
     );
@@ -318,7 +322,7 @@ export const createStylesRouter = () => {
           fileName,
           storagePath: file.name,
           imageUrl,
-          prompt: `${toCoupleTitle(fileName)} cift cekimi konsepti, premium kompozisyon. ${COUPLE_IDENTITY_SUFFIX}`,
+          prompt: `${toCoupleTitle(fileName)} cift cekimi konsepti, premium kompozisyon. ${FRAMING_SUFFIX} ${COUPLE_IDENTITY_SUFFIX}`,
         };
       }),
     );
