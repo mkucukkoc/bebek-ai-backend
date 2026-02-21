@@ -7,6 +7,7 @@ import {
   generateStyledPhoto,
   generateStyledPhotoWithTemplate,
   generateStyledVideoWithVeo,
+  generateCoupleStyledPhotoWithTemplate,
   generateWeddingStyledPhotoWithTemplate,
 } from '../server/bebek/services/geminiService';
 import { logger } from '../utils/logger';
@@ -47,6 +48,8 @@ export const createStylesRouter = () => {
     'Use the uploaded baby photo as the ONLY identity reference. Keep the same baby face and identity exactly: face shape, eyes, nose, lips, skin tone, and baby proportions must stay the same. Preserve eye state exactly (open stays open, closed stays closed) and keep the same facial expression. Do not create a new baby. Place this same baby naturally into the requested studio scene and style. Ultra-realistic newborn photography.';
   const WEDDING_IDENTITY_SUFFIX =
     'Use mother and father uploaded photos as the ONLY identity references. Keep both faces and identities exactly, preserve facial structure and skin tone, and place both naturally into the wedding template scene. Ultra-realistic wedding photography.';
+  const COUPLE_IDENTITY_SUFFIX =
+    'Use two uploaded person photos as the ONLY identity references. Keep both faces and identities exactly, preserve facial structure and skin tone, and place both naturally into the couple template scene. Ultra-realistic couple photography.';
 
   const STYLE_PROMPT_BY_ID: Record<string, string> = {
     l1: `Vertical 9:16 elegant family portrait with baby, luxury classic interior, neutral beige tones, soft cinematic lighting, parents wearing modern formal clothing, baby centered, high fashion lifestyle photography, photorealistic, editorial style ${LIFESTYLE_IDENTITY_SUFFIX}`,
@@ -101,6 +104,11 @@ export const createStylesRouter = () => {
       .replace(/\.[^/.]+$/, '')
       .replace(/[_-]+/g, ' ')
       .trim() || 'Dugun Stili';
+  const toCoupleTitle = (fileName: string) =>
+    fileName
+      .replace(/\.[^/.]+$/, '')
+      .replace(/[_-]+/g, ' ')
+      .trim() || 'Cift Cekimi';
 
   const normalizeKey = (value: string) =>
     value
@@ -277,6 +285,40 @@ export const createStylesRouter = () => {
           storagePath: file.name,
           imageUrl,
           prompt: `${toWeddingTitle(fileName)} dugun konsepti, premium kompozisyon. ${WEDDING_IDENTITY_SUFFIX}`,
+        };
+      }),
+    );
+    return items;
+  };
+  const loadCoupleTemplateItems = async () => {
+    const bucket: any = storage.bucket();
+    const [files] = await bucket.getFiles({ prefix: 'assets/cift_cekimi/' });
+    const imageFiles = files.filter((file: any) => {
+      const lower = String(file.name || '').toLowerCase();
+      return (
+        lower.startsWith('assets/cift_cekimi/') &&
+        !lower.endsWith('/') &&
+        (lower.endsWith('.jpg') ||
+          lower.endsWith('.jpeg') ||
+          lower.endsWith('.png') ||
+          lower.endsWith('.webp'))
+      );
+    });
+
+    const sorted = imageFiles.sort((a: any, b: any) => String(a.name).localeCompare(String(b.name)));
+    const items = await Promise.all(
+      sorted.map(async (file: any, index: number) => {
+        const fileName = String(file.name).split('/').pop() || `couple_${index + 1}.jpg`;
+        const imageUrl = await getSignedOrPublicUrl(file.name);
+        const styleId = `c${index + 1}`;
+        return {
+          id: styleId,
+          styleId,
+          title: toCoupleTitle(fileName),
+          fileName,
+          storagePath: file.name,
+          imageUrl,
+          prompt: `${toCoupleTitle(fileName)} cift cekimi konsepti, premium kompozisyon. ${COUPLE_IDENTITY_SUFFIX}`,
         };
       }),
     );
@@ -737,6 +779,168 @@ export const createStylesRouter = () => {
         'Wedding style generation failed',
       );
       res.status(500).json({ error: 'internal_error', message: (error as Error)?.message || 'Wedding generation failed' });
+    }
+  });
+
+  router.get('/couple/templates', authenticateToken, async (req, res) => {
+    try {
+      const authReq = req as AuthRequest;
+      if (!authReq.user) {
+        res.status(401).json({ error: 'access_denied', message: 'Authentication required' });
+        return;
+      }
+
+      const items = await loadCoupleTemplateItems();
+      logger.info(
+        { userId: authReq.user.id, count: items.length, step: 'couple_templates_list_success' },
+        'Couple templates listed',
+      );
+      res.json({ items });
+    } catch (error) {
+      logger.error({ err: error, step: 'couple_templates_list_error' }, 'Failed to list couple templates');
+      res.status(500).json({ error: 'internal_error', message: 'Failed to list couple templates' });
+    }
+  });
+
+  router.post('/couple/generate-photo', authenticateToken, async (req, res) => {
+    try {
+      const authReq = req as AuthRequest;
+      if (!authReq.user) {
+        res.status(401).json({ error: 'access_denied', message: 'Authentication required' });
+        return;
+      }
+
+      const userId = authReq.user.id;
+      const styleId = typeof req.body?.style_id === 'string' ? req.body.style_id : null;
+      const firstImageSource =
+        typeof req.body?.first_image_url === 'string'
+          ? req.body.first_image_url
+          : (typeof req.body?.first_image_path === 'string' ? req.body.first_image_path : '');
+      const secondImageSource =
+        typeof req.body?.second_image_url === 'string'
+          ? req.body.second_image_url
+          : (typeof req.body?.second_image_path === 'string' ? req.body.second_image_path : '');
+      const requestId = typeof req.body?.request_id === 'string'
+        ? req.body.request_id
+        : (req.header('x-request-id') || null);
+      const requestedModel = typeof req.body?.model === 'string' ? req.body.model : undefined;
+
+      if (!styleId || !firstImageSource || !secondImageSource) {
+        res.status(400).json({
+          error: 'invalid_request',
+          message: 'style_id, first_image_url and second_image_url are required',
+        });
+        return;
+      }
+
+      const coupleTemplates = await loadCoupleTemplateItems();
+      const selectedTemplate = coupleTemplates.find(item => item.styleId === styleId) || null;
+      if (!selectedTemplate) {
+        res.status(400).json({ error: 'invalid_request', message: `Invalid couple style_id: ${styleId}` });
+        return;
+      }
+
+      const bucket: any = storage.bucket();
+      const firstResolved = await downloadImageFromSource(bucket, firstImageSource);
+      const secondResolved = await downloadImageFromSource(bucket, secondImageSource);
+      const templateResolved = await downloadImageFromSource(bucket, selectedTemplate.storagePath);
+      const now = Date.now();
+      const firstExt = extFromMime(firstResolved.mimeType || 'image/jpeg');
+      const secondExt = extFromMime(secondResolved.mimeType || 'image/jpeg');
+      const firstInputPath = `users/${userId}/uploads/cift_cekimi/${now}-first.${firstExt}`;
+      const secondInputPath = `users/${userId}/uploads/cift_cekimi/${now}-second.${secondExt}`;
+
+      await bucket.file(firstInputPath).save(firstResolved.buffer, {
+        contentType: firstResolved.mimeType || 'image/jpeg',
+        resumable: false,
+        metadata: { cacheControl: 'public,max-age=31536000' },
+      });
+      await bucket.file(secondInputPath).save(secondResolved.buffer, {
+        contentType: secondResolved.mimeType || 'image/jpeg',
+        resumable: false,
+        metadata: { cacheControl: 'public,max-age=31536000' },
+      });
+
+      const generated = await generateCoupleStyledPhotoWithTemplate({
+        firstImageBase64: firstResolved.buffer.toString('base64'),
+        firstMimeType: firstResolved.mimeType || 'image/jpeg',
+        secondImageBase64: secondResolved.buffer.toString('base64'),
+        secondMimeType: secondResolved.mimeType || 'image/jpeg',
+        templateImageBase64: templateResolved.buffer.toString('base64'),
+        templateMimeType: templateResolved.mimeType || 'image/jpeg',
+        prompt: selectedTemplate.prompt,
+        model: requestedModel,
+      });
+
+      const generatedExt = extFromMime(generated.mimeType || 'image/png');
+      const generatedId = randomUUID();
+      const generatedPath = `users/${userId}/generated/cift_cekimi/${generatedId}.${generatedExt}`;
+      const generatedBuffer = Buffer.from(generated.data, 'base64');
+      await bucket.file(generatedPath).save(generatedBuffer, {
+        contentType: generated.mimeType || 'image/png',
+        resumable: false,
+        metadata: { cacheControl: 'public,max-age=31536000' },
+      });
+
+      const outputUrl = await getSignedOrPublicUrl(generatedPath);
+      const firstInputUrl = await getSignedOrPublicUrl(firstInputPath);
+      const secondInputUrl = await getSignedOrPublicUrl(secondInputPath);
+      const templateUrl = selectedTemplate.imageUrl;
+
+      await db
+        .collection('users')
+        .doc(userId)
+        .collection('generatedPhotos')
+        .doc(generatedId)
+        .set({
+          id: generatedId,
+          styleType: 'cift_cekimi',
+          styleId,
+          requestId,
+          prompt: selectedTemplate.prompt,
+          inputFirstImagePath: firstInputPath,
+          inputFirstImageUrl: firstInputUrl,
+          inputSecondImagePath: secondInputPath,
+          inputSecondImageUrl: secondInputUrl,
+          templateImagePath: selectedTemplate.storagePath,
+          templateImageUrl: templateUrl,
+          outputImagePath: generatedPath,
+          outputImageUrl: outputUrl,
+          outputMimeType: generated.mimeType || 'image/png',
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+
+      logger.info(
+        { userId, styleId, generatedId, requestId, step: 'couple_generate_success' },
+        'Couple style generation completed',
+      );
+      res.json({
+        request_id: requestId,
+        style_id: styleId,
+        user_id: userId,
+        prompt: selectedTemplate.prompt,
+        input: {
+          first_path: firstInputPath,
+          first_url: firstInputUrl,
+          second_path: secondInputPath,
+          second_url: secondInputUrl,
+          template_path: selectedTemplate.storagePath,
+          template_url: templateUrl,
+        },
+        output: {
+          id: generatedId,
+          path: generatedPath,
+          url: outputUrl,
+          mimeType: generated.mimeType || 'image/png',
+        },
+      });
+    } catch (error) {
+      logger.error(
+        { err: error, step: 'couple_generate_failed', requestId: req.header('x-request-id') || null },
+        'Couple style generation failed',
+      );
+      res.status(500).json({ error: 'internal_error', message: (error as Error)?.message || 'Couple generation failed' });
     }
   });
 

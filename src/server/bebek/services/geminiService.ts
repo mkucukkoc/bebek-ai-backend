@@ -530,6 +530,81 @@ export const generateWeddingStyledPhotoWithTemplate = async (params: {
   };
 };
 
+export const generateCoupleStyledPhotoWithTemplate = async (params: {
+  firstImageBase64: string;
+  firstMimeType: string;
+  secondImageBase64: string;
+  secondMimeType: string;
+  templateImageBase64: string;
+  templateMimeType: string;
+  prompt: string;
+  model?: string;
+}) => {
+  const resolvedModel = params.model || DEFAULT_FAL_IMAGE_MODEL;
+  const falKey = getFalKey();
+
+  if (!falKey) {
+    if (process.env.NODE_ENV !== 'production') {
+      logger.warn('FAL_KEY missing; returning first person image as generated output in non-production');
+      return {
+        data: params.firstImageBase64,
+        mimeType: params.firstMimeType,
+        text: 'Mock response used because FAL_KEY is missing',
+      };
+    }
+    throw new Error('FAL_KEY is not configured');
+  }
+
+  ensureFalConfigured();
+  const firstDataUri = `data:${params.firstMimeType};base64,${params.firstImageBase64}`;
+  const secondDataUri = `data:${params.secondMimeType};base64,${params.secondImageBase64}`;
+  const templateDataUri = `data:${params.templateMimeType};base64,${params.templateImageBase64}`;
+
+  const finalPromptText =
+    'TASK: Create a couple portrait using two identity references and one scene template.\n\n' +
+    'INPUTS:\n' +
+    '1) PERSON 1 PHOTO -> preserve identity exactly.\n' +
+    '2) PERSON 2 PHOTO -> preserve identity exactly.\n' +
+    '3) TEMPLATE PHOTO -> copy only composition, pose and environment.\n\n' +
+    `STYLE BRIEF:\n${params.prompt}\n\n` +
+    'RULES:\n' +
+    '- Keep both persons facial identity unchanged.\n' +
+    '- Place both persons naturally into the template couple scene.\n' +
+    '- Keep realistic skin tones, anatomy and lighting.\n' +
+    '- Do not create extra people.\n' +
+    '- Keep result ultra realistic, premium couple photography style.\n' +
+    '- Return exactly one final image.';
+
+  const falInput = {
+    prompt: finalPromptText,
+    image_urls: [firstDataUri, secondDataUri, templateDataUri],
+    image_size: 'portrait_16_9' as const,
+    num_images: 1,
+    max_images: 1,
+    enhance_prompt_mode: 'standard' as const,
+    enable_safety_checker: true,
+  };
+
+  const result: any = await fal.subscribe(resolvedModel, {
+    input: falInput,
+    logs: true,
+  });
+  const outputUrl = result?.data?.images?.[0]?.url as string | undefined;
+  if (!outputUrl) {
+    throw new Error('FAL returned no output image URL for couple generation');
+  }
+
+  const outputResponse = await axios.get<ArrayBuffer>(outputUrl, { responseType: 'arraybuffer' });
+  const outputMimeType = (outputResponse.headers['content-type'] as string) || 'image/png';
+  const outputBase64 = Buffer.from(outputResponse.data as any).toString('base64');
+
+  return {
+    data: outputBase64,
+    mimeType: outputMimeType,
+    text: undefined,
+  };
+};
+
 export const streamCoachResponse = async (params: {
   context: string;
   history: Array<{ role: string; content: string }>;
