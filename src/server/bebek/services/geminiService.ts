@@ -477,21 +477,19 @@ export const generateWeddingStyledPhotoWithTemplate = async (params: {
   const templateDataUri = `data:${params.templateMimeType};base64,${params.templateImageBase64}`;
 
   const finalPromptText =
-    'TASK: Create a wedding portrait using two identity references and one scene template.\n\n' +
-    'INPUTS:\n' +
-    '1) MOTHER PHOTO -> preserve mother identity exactly.\n' +
-    '2) FATHER PHOTO -> preserve father identity exactly.\n' +
-    '3) TEMPLATE PHOTO -> copy only composition, pose and environment.\n\n' +
-    `STYLE BRIEF:\n${params.prompt}\n\n` +
-    'RULES:\n' +
-    '- Keep both parents facial identity unchanged.\n' +
-    '- Place both persons naturally into the template wedding scene.\n' +
-    '- Use medium-shot framing. Keep camera slightly farther from subjects.\n' +
-    '- Do not crop faces. Keep both full faces clearly visible and sharp.\n' +
-    '- Keep realistic skin tones, anatomy and lighting.\n' +
-    '- Do not create extra people.\n' +
-    '- Keep result ultra realistic, premium wedding photography style.\n' +
-    '- Return exactly one final image.';
+    'Verilen template fotograftaki sahneyi, arka plani, isigi, pozisyonu, kamera acisini ve kiyafetleri tamamen koru.\n\n' +
+    'Sadece yuz degisimi yap:\n' +
+    '- Anne referans fotografindaki yuzu kadin karakterin yuzune uygula.\n' +
+    '- Baba referans fotografindaki yuzu erkek karakterin yuzune uygula.\n\n' +
+    'Yuz oranlari dogal olmali.\n' +
+    'Cilt tonu sahne isigina uyumlu olmali.\n' +
+    'Boyun ve sac cizgileri dogal gecis yapmali.\n' +
+    "Yuz ifadeleri template'teki mimikle ayni kalmali.\n" +
+    'Kiyafet, arka plan, poz ve kadraj kesinlikle degismemeli.\n' +
+    'Ekstra detay ekleme, sahneyi yeniden olusturma.\n' +
+    'Sadece yuz swap islemi yap.\n\n' +
+    `Template stili notu: ${params.prompt}\n\n` +
+    'Ultra gercekci, yuksek cozunurluk, dogal cilt dokusu.';
 
   const falInput = {
     prompt: finalPromptText,
@@ -566,20 +564,19 @@ export const generateCoupleStyledPhotoWithTemplate = async (params: {
   const templateDataUri = `data:${params.templateMimeType};base64,${params.templateImageBase64}`;
 
   const finalPromptText =
-    'TASK: Face-swap based couple generation with strict template preservation.\n\n' +
-    'INPUTS:\n' +
-    '1) PERSON 1 PHOTO -> use as identity source for the person in template (female slot if present).\n' +
-    '2) PERSON 2 PHOTO -> use as identity source for the person in template (male slot if present).\n' +
-    '3) TEMPLATE PHOTO -> this is the scene master and must stay unchanged.\n\n' +
-    `STYLE BRIEF:\n${params.prompt}\n\n` +
-    'HARD CONSTRAINTS:\n' +
-    '- Keep template composition, camera angle, framing, pose, background, clothes and lighting unchanged.\n' +
-    '- Perform identity replacement on faces only.\n' +
-    '- Do not alter environment, props or scene geometry.\n' +
-    '- Keep both full faces visible, realistic and sharp.\n' +
-    '- Preserve natural skin texture and anatomy.\n' +
-    '- Do not add/remove people.\n' +
-    '- Return exactly one ultra-realistic image.';
+    'Verilen template fotograftaki sahneyi, arka plani, isigi, pozisyonu, kamera acisini ve kiyafetleri tamamen koru.\n\n' +
+    'Sadece yuz degisimi yap:\n' +
+    '- Anne referans fotografindaki yuzu kadin karakterin yuzune uygula.\n' +
+    '- Baba referans fotografindaki yuzu erkek karakterin yuzune uygula.\n\n' +
+    'Yuz oranlari dogal olmali.\n' +
+    'Cilt tonu sahne isigina uyumlu olmali.\n' +
+    'Boyun ve sac cizgileri dogal gecis yapmali.\n' +
+    "Yuz ifadeleri template'teki mimikle ayni kalmali.\n" +
+    'Kiyafet, arka plan, poz ve kadraj kesinlikle degismemeli.\n' +
+    'Ekstra detay ekleme, sahneyi yeniden olusturma.\n' +
+    'Sadece yuz swap islemi yap.\n\n' +
+    `Template stili notu: ${params.prompt}\n\n` +
+    'Ultra gercekci, yuksek cozunurluk, dogal cilt dokusu.';
 
   const falInput = {
     prompt: finalPromptText,

@@ -108,11 +108,30 @@ export const createStylesRouter = () => {
       .replace(/\.[^/.]+$/, '')
       .replace(/[_-]+/g, ' ')
       .trim() || 'Dugun Stili';
+  const WEDDING_TEMPLATE_KEY_BY_STYLE_ID: Record<string, string> = {
+    w1: 'bahcederomatiksarilmaaltinsaat',
+    w2: 'ciceklitakaltindaalinalinaromantikpoz',
+    w3: 'gelinarabadaniniyorvintagearaba',
+    w4: 'gunbatimindadenizkenariciceklitak',
+    w5: 'merdivendekiliseonu',
+    w6: 'pariseyfelkulesionundesiyahbeyaz',
+  };
   const toCoupleTitle = (fileName: string) =>
     fileName
       .replace(/\.[^/.]+$/, '')
       .replace(/[_-]+/g, ' ')
       .trim() || 'Cift Cekimi';
+  const COUPLE_TEMPLATE_KEY_BY_STYLE_ID: Record<string, string> = {
+    c1: 'dramaticcloseupportrait',
+    c2: 'klasikkoltuk',
+    c3: 'kirmizielbise',
+    c4: 'kirmizigulbuketi',
+    c5: 'luxuryfloorpose',
+    c6: 'minimalkonseptkalpfon',
+    c7: 'modernminimalwhitestudio',
+    c8: 'standingpowercouple',
+    c9: 'windowlighteditorial',
+  };
 
   const normalizeKey = (value: string) =>
     value
@@ -275,12 +294,48 @@ export const createStylesRouter = () => {
       );
     });
 
-    const sorted = imageFiles.sort((a: any, b: any) => String(a.name).localeCompare(String(b.name)));
+    const filesWithKey = imageFiles.map((file: any) => {
+      const fileName = String(file.name).split('/').pop() || 'wedding.jpg';
+      return {
+        file,
+        fileName,
+        normalizedKey: normalizeKey(fileName),
+      };
+    });
+    const usedFileNames = new Set<string>();
+    const orderedKnown = Object.entries(WEDDING_TEMPLATE_KEY_BY_STYLE_ID)
+      .map(([styleId, templateKey]) => {
+        const matched = filesWithKey.find((item: { normalizedKey: string; file: any; fileName: string }) =>
+          item.normalizedKey.includes(templateKey) || templateKey.includes(item.normalizedKey),
+        );
+        if (!matched) {
+          return null;
+        }
+        usedFileNames.add(String(matched.file.name));
+        return {
+          styleId,
+          file: matched.file,
+          fileName: matched.fileName,
+        };
+      })
+      .filter(Boolean) as Array<{ styleId: string; file: any; fileName: string }>;
+
+    const fallbackUnknown = filesWithKey
+      .filter((item: { file: any; fileName: string }) => !usedFileNames.has(String(item.file.name)))
+      .sort(
+        (a: { file: any; fileName: string }, b: { file: any; fileName: string }) =>
+          String(a.file.name).localeCompare(String(b.file.name)),
+      )
+      .map((item: { file: any; fileName: string }, index: number) => ({
+        styleId: `w_extra_${index + 1}`,
+        file: item.file,
+        fileName: item.fileName,
+      }));
+
+    const finalOrder = [...orderedKnown, ...fallbackUnknown];
     const items = await Promise.all(
-      sorted.map(async (file: any, index: number) => {
-        const fileName = String(file.name).split('/').pop() || `wedding_${index + 1}.jpg`;
+      finalOrder.map(async ({ styleId, file, fileName }) => {
         const imageUrl = await getSignedOrPublicUrl(file.name);
-        const styleId = `w${index + 1}`;
         return {
           id: styleId,
           styleId,
@@ -309,12 +364,48 @@ export const createStylesRouter = () => {
       );
     });
 
-    const sorted = imageFiles.sort((a: any, b: any) => String(a.name).localeCompare(String(b.name)));
+    const filesWithKey = imageFiles.map((file: any) => {
+      const fileName = String(file.name).split('/').pop() || 'couple.jpg';
+      return {
+        file,
+        fileName,
+        normalizedKey: normalizeKey(fileName),
+      };
+    });
+    const usedFileNames = new Set<string>();
+    const orderedKnown = Object.entries(COUPLE_TEMPLATE_KEY_BY_STYLE_ID)
+      .map(([styleId, templateKey]) => {
+        const matched = filesWithKey.find((item: { normalizedKey: string; file: any; fileName: string }) =>
+          item.normalizedKey.includes(templateKey) || templateKey.includes(item.normalizedKey),
+        );
+        if (!matched) {
+          return null;
+        }
+        usedFileNames.add(String(matched.file.name));
+        return {
+          styleId,
+          file: matched.file,
+          fileName: matched.fileName,
+        };
+      })
+      .filter(Boolean) as Array<{ styleId: string; file: any; fileName: string }>;
+
+    const fallbackUnknown = filesWithKey
+      .filter((item: { file: any; fileName: string }) => !usedFileNames.has(String(item.file.name)))
+      .sort(
+        (a: { file: any; fileName: string }, b: { file: any; fileName: string }) =>
+          String(a.file.name).localeCompare(String(b.file.name)),
+      )
+      .map((item: { file: any; fileName: string }, index: number) => ({
+        styleId: `c_extra_${index + 1}`,
+        file: item.file,
+        fileName: item.fileName,
+      }));
+
+    const finalOrder = [...orderedKnown, ...fallbackUnknown];
     const items = await Promise.all(
-      sorted.map(async (file: any, index: number) => {
-        const fileName = String(file.name).split('/').pop() || `couple_${index + 1}.jpg`;
+      finalOrder.map(async ({ styleId, file, fileName }) => {
         const imageUrl = await getSignedOrPublicUrl(file.name);
-        const styleId = `c${index + 1}`;
         return {
           id: styleId,
           styleId,
@@ -686,6 +777,18 @@ export const createStylesRouter = () => {
       const motherResolved = await downloadImageFromSource(bucket, motherImageSource);
       const fatherResolved = await downloadImageFromSource(bucket, fatherImageSource);
       const templateResolved = await downloadImageFromSource(bucket, selectedTemplate.storagePath);
+      logger.info(
+        {
+          userId,
+          requestId,
+          step: 'wedding_template_resolved',
+          requestedStyleId: styleId || null,
+          selectedTemplateStyleId: selectedTemplate.styleId || null,
+          selectedTemplateTitle: selectedTemplate.title || null,
+          selectedTemplatePath: selectedTemplate.storagePath || null,
+        },
+        'Wedding template resolved for generation',
+      );
       const now = Date.now();
       const motherExt = extFromMime(motherResolved.mimeType || 'image/jpeg');
       const fatherExt = extFromMime(fatherResolved.mimeType || 'image/jpeg');
@@ -864,6 +967,19 @@ export const createStylesRouter = () => {
         promptOverride
         || selectedTemplate?.prompt
         || 'Face swap the two input identities into the two people in the template while preserving template scene exactly.';
+      logger.info(
+        {
+          userId,
+          requestId,
+          step: 'couple_template_resolved',
+          requestedStyleId: styleId || null,
+          selectedTemplateStyleId: selectedTemplate?.styleId || null,
+          selectedTemplateTitle: selectedTemplate?.title || null,
+          selectedTemplatePath: selectedTemplate?.storagePath || null,
+          templateSourceToUse,
+        },
+        'Couple template resolved for generation',
+      );
       const now = Date.now();
       const firstExt = extFromMime(firstResolved.mimeType || 'image/jpeg');
       const secondExt = extFromMime(secondResolved.mimeType || 'image/jpeg');
