@@ -3,7 +3,12 @@ import multer from 'multer';
 import { authenticateToken, AuthRequest } from '../middleware/authMiddleware';
 import { randomUUID } from 'crypto';
 import { db, FieldValue, storage } from '../firebase';
-import { generateStyledPhoto, generateStyledPhotoWithTemplate, generateStyledVideoWithVeo } from '../server/bebek/services/geminiService';
+import {
+  generateStyledPhoto,
+  generateStyledPhotoWithTemplate,
+  generateStyledVideoWithVeo,
+  generateWeddingStyledPhotoWithTemplate,
+} from '../server/bebek/services/geminiService';
 import { logger } from '../utils/logger';
 import { attachRouteLogger } from '../utils/routeLogger';
 
@@ -40,6 +45,8 @@ export const createStylesRouter = () => {
     'Use the uploaded baby photo as the ONLY identity reference. Keep the same baby face and identity exactly: face shape, eyes, nose, lips, skin tone, and baby proportions must stay the same. Preserve eye state exactly (open stays open, closed stays closed) and keep the same facial expression. Do not create a new baby. Place this same baby naturally into the requested newborn setup and style. Ultra-realistic newborn photography.';
   const STUDIO_IDENTITY_SUFFIX =
     'Use the uploaded baby photo as the ONLY identity reference. Keep the same baby face and identity exactly: face shape, eyes, nose, lips, skin tone, and baby proportions must stay the same. Preserve eye state exactly (open stays open, closed stays closed) and keep the same facial expression. Do not create a new baby. Place this same baby naturally into the requested studio scene and style. Ultra-realistic newborn photography.';
+  const WEDDING_IDENTITY_SUFFIX =
+    'Use mother and father uploaded photos as the ONLY identity references. Keep both faces and identities exactly, preserve facial structure and skin tone, and place both naturally into the wedding template scene. Ultra-realistic wedding photography.';
 
   const STYLE_PROMPT_BY_ID: Record<string, string> = {
     l1: `Vertical 9:16 elegant family portrait with baby, luxury classic interior, neutral beige tones, soft cinematic lighting, parents wearing modern formal clothing, baby centered, high fashion lifestyle photography, photorealistic, editorial style ${LIFESTYLE_IDENTITY_SUFFIX}`,
@@ -89,6 +96,11 @@ export const createStylesRouter = () => {
   };
   const preview = (value: string | null | undefined, max = 220) =>
     value ? value.slice(0, max) : null;
+  const toWeddingTitle = (fileName: string) =>
+    fileName
+      .replace(/\.[^/.]+$/, '')
+      .replace(/[_-]+/g, ' ')
+      .trim() || 'Dugun Stili';
 
   const normalizeKey = (value: string) =>
     value
@@ -234,6 +246,41 @@ export const createStylesRouter = () => {
       const bucketName = bucket.name;
       return `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(filePath)}?alt=media`;
     }
+  };
+
+  const loadWeddingTemplateItems = async () => {
+    const bucket: any = storage.bucket();
+    const [files] = await bucket.getFiles({ prefix: 'assets/wedding/' });
+    const imageFiles = files.filter((file: any) => {
+      const lower = String(file.name || '').toLowerCase();
+      return (
+        lower.startsWith('assets/wedding/') &&
+        !lower.endsWith('/') &&
+        (lower.endsWith('.jpg') ||
+          lower.endsWith('.jpeg') ||
+          lower.endsWith('.png') ||
+          lower.endsWith('.webp'))
+      );
+    });
+
+    const sorted = imageFiles.sort((a: any, b: any) => String(a.name).localeCompare(String(b.name)));
+    const items = await Promise.all(
+      sorted.map(async (file: any, index: number) => {
+        const fileName = String(file.name).split('/').pop() || `wedding_${index + 1}.jpg`;
+        const imageUrl = await getSignedOrPublicUrl(file.name);
+        const styleId = `w${index + 1}`;
+        return {
+          id: styleId,
+          styleId,
+          title: toWeddingTitle(fileName),
+          fileName,
+          storagePath: file.name,
+          imageUrl,
+          prompt: `${toWeddingTitle(fileName)} dugun konsepti, premium kompozisyon. ${WEDDING_IDENTITY_SUFFIX}`,
+        };
+      }),
+    );
+    return items;
   };
 
   router.post('/generate-photo', authenticateToken, upload.single('image'), async (req, res) => {
@@ -528,6 +575,168 @@ export const createStylesRouter = () => {
         error: isConfigIssue ? 'service_unavailable' : 'internal_error',
         message,
       });
+    }
+  });
+
+  router.get('/wedding/templates', authenticateToken, async (req, res) => {
+    try {
+      const authReq = req as AuthRequest;
+      if (!authReq.user) {
+        res.status(401).json({ error: 'access_denied', message: 'Authentication required' });
+        return;
+      }
+
+      const items = await loadWeddingTemplateItems();
+      logger.info(
+        { userId: authReq.user.id, count: items.length, step: 'wedding_templates_list_success' },
+        'Wedding templates listed',
+      );
+      res.json({ items });
+    } catch (error) {
+      logger.error({ err: error, step: 'wedding_templates_list_error' }, 'Failed to list wedding templates');
+      res.status(500).json({ error: 'internal_error', message: 'Failed to list wedding templates' });
+    }
+  });
+
+  router.post('/wedding/generate-photo', authenticateToken, async (req, res) => {
+    try {
+      const authReq = req as AuthRequest;
+      if (!authReq.user) {
+        res.status(401).json({ error: 'access_denied', message: 'Authentication required' });
+        return;
+      }
+
+      const userId = authReq.user.id;
+      const styleId = typeof req.body?.style_id === 'string' ? req.body.style_id : null;
+      const motherImageSource =
+        typeof req.body?.mother_image_url === 'string'
+          ? req.body.mother_image_url
+          : (typeof req.body?.mother_image_path === 'string' ? req.body.mother_image_path : '');
+      const fatherImageSource =
+        typeof req.body?.father_image_url === 'string'
+          ? req.body.father_image_url
+          : (typeof req.body?.father_image_path === 'string' ? req.body.father_image_path : '');
+      const requestId = typeof req.body?.request_id === 'string'
+        ? req.body.request_id
+        : (req.header('x-request-id') || null);
+      const requestedModel = typeof req.body?.model === 'string' ? req.body.model : undefined;
+
+      if (!styleId || !motherImageSource || !fatherImageSource) {
+        res.status(400).json({
+          error: 'invalid_request',
+          message: 'style_id, mother_image_url and father_image_url are required',
+        });
+        return;
+      }
+
+      const weddingTemplates = await loadWeddingTemplateItems();
+      const selectedTemplate = weddingTemplates.find(item => item.styleId === styleId) || null;
+      if (!selectedTemplate) {
+        res.status(400).json({ error: 'invalid_request', message: `Invalid wedding style_id: ${styleId}` });
+        return;
+      }
+
+      const bucket: any = storage.bucket();
+      const motherResolved = await downloadImageFromSource(bucket, motherImageSource);
+      const fatherResolved = await downloadImageFromSource(bucket, fatherImageSource);
+      const templateResolved = await downloadImageFromSource(bucket, selectedTemplate.storagePath);
+      const now = Date.now();
+      const motherExt = extFromMime(motherResolved.mimeType || 'image/jpeg');
+      const fatherExt = extFromMime(fatherResolved.mimeType || 'image/jpeg');
+      const motherInputPath = `users/${userId}/uploads/wedding/${now}-mother.${motherExt}`;
+      const fatherInputPath = `users/${userId}/uploads/wedding/${now}-father.${fatherExt}`;
+
+      await bucket.file(motherInputPath).save(motherResolved.buffer, {
+        contentType: motherResolved.mimeType || 'image/jpeg',
+        resumable: false,
+        metadata: { cacheControl: 'public,max-age=31536000' },
+      });
+      await bucket.file(fatherInputPath).save(fatherResolved.buffer, {
+        contentType: fatherResolved.mimeType || 'image/jpeg',
+        resumable: false,
+        metadata: { cacheControl: 'public,max-age=31536000' },
+      });
+
+      const generated = await generateWeddingStyledPhotoWithTemplate({
+        motherImageBase64: motherResolved.buffer.toString('base64'),
+        motherMimeType: motherResolved.mimeType || 'image/jpeg',
+        fatherImageBase64: fatherResolved.buffer.toString('base64'),
+        fatherMimeType: fatherResolved.mimeType || 'image/jpeg',
+        templateImageBase64: templateResolved.buffer.toString('base64'),
+        templateMimeType: templateResolved.mimeType || 'image/jpeg',
+        prompt: selectedTemplate.prompt,
+        model: requestedModel,
+      });
+
+      const generatedExt = extFromMime(generated.mimeType || 'image/png');
+      const generatedId = randomUUID();
+      const generatedPath = `users/${userId}/generated/wedding/${generatedId}.${generatedExt}`;
+      const generatedBuffer = Buffer.from(generated.data, 'base64');
+      await bucket.file(generatedPath).save(generatedBuffer, {
+        contentType: generated.mimeType || 'image/png',
+        resumable: false,
+        metadata: { cacheControl: 'public,max-age=31536000' },
+      });
+
+      const outputUrl = await getSignedOrPublicUrl(generatedPath);
+      const motherInputUrl = await getSignedOrPublicUrl(motherInputPath);
+      const fatherInputUrl = await getSignedOrPublicUrl(fatherInputPath);
+      const templateUrl = selectedTemplate.imageUrl;
+
+      await db
+        .collection('users')
+        .doc(userId)
+        .collection('generatedPhotos')
+        .doc(generatedId)
+        .set({
+          id: generatedId,
+          styleType: 'wedding',
+          styleId,
+          requestId,
+          prompt: selectedTemplate.prompt,
+          inputMotherImagePath: motherInputPath,
+          inputMotherImageUrl: motherInputUrl,
+          inputFatherImagePath: fatherInputPath,
+          inputFatherImageUrl: fatherInputUrl,
+          templateImagePath: selectedTemplate.storagePath,
+          templateImageUrl: templateUrl,
+          outputImagePath: generatedPath,
+          outputImageUrl: outputUrl,
+          outputMimeType: generated.mimeType || 'image/png',
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+
+      logger.info(
+        { userId, styleId, generatedId, requestId, step: 'wedding_generate_success' },
+        'Wedding style generation completed',
+      );
+      res.json({
+        request_id: requestId,
+        style_id: styleId,
+        user_id: userId,
+        prompt: selectedTemplate.prompt,
+        input: {
+          mother_path: motherInputPath,
+          mother_url: motherInputUrl,
+          father_path: fatherInputPath,
+          father_url: fatherInputUrl,
+          template_path: selectedTemplate.storagePath,
+          template_url: templateUrl,
+        },
+        output: {
+          id: generatedId,
+          path: generatedPath,
+          url: outputUrl,
+          mimeType: generated.mimeType || 'image/png',
+        },
+      });
+    } catch (error) {
+      logger.error(
+        { err: error, step: 'wedding_generate_failed', requestId: req.header('x-request-id') || null },
+        'Wedding style generation failed',
+      );
+      res.status(500).json({ error: 'internal_error', message: (error as Error)?.message || 'Wedding generation failed' });
     }
   });
 

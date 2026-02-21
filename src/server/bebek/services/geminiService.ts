@@ -443,6 +443,93 @@ export const generateStyledPhotoWithTemplate = async (params: {
   };
 };
 
+export const generateWeddingStyledPhotoWithTemplate = async (params: {
+  motherImageBase64: string;
+  motherMimeType: string;
+  fatherImageBase64: string;
+  fatherMimeType: string;
+  templateImageBase64: string;
+  templateMimeType: string;
+  prompt: string;
+  model?: string;
+}) => {
+  const resolvedModel = params.model || DEFAULT_FAL_IMAGE_MODEL;
+  const falKey = getFalKey();
+
+  if (!falKey) {
+    if (process.env.NODE_ENV !== 'production') {
+      logger.warn('FAL_KEY missing; returning mother image as generated output in non-production');
+      return {
+        data: params.motherImageBase64,
+        mimeType: params.motherMimeType,
+        text: 'Mock response used because FAL_KEY is missing',
+      };
+    }
+    throw new Error('FAL_KEY is not configured');
+  }
+
+  ensureFalConfigured();
+  const motherDataUri = `data:${params.motherMimeType};base64,${params.motherImageBase64}`;
+  const fatherDataUri = `data:${params.fatherMimeType};base64,${params.fatherImageBase64}`;
+  const templateDataUri = `data:${params.templateMimeType};base64,${params.templateImageBase64}`;
+
+  const finalPromptText =
+    'TASK: Create a wedding portrait using two identity references and one scene template.\n\n' +
+    'INPUTS:\n' +
+    '1) MOTHER PHOTO -> preserve mother identity exactly.\n' +
+    '2) FATHER PHOTO -> preserve father identity exactly.\n' +
+    '3) TEMPLATE PHOTO -> copy only composition, pose and environment.\n\n' +
+    `STYLE BRIEF:\n${params.prompt}\n\n` +
+    'RULES:\n' +
+    '- Keep both parents facial identity unchanged.\n' +
+    '- Place both persons naturally into the template wedding scene.\n' +
+    '- Keep realistic skin tones, anatomy and lighting.\n' +
+    '- Do not create extra people.\n' +
+    '- Keep result ultra realistic, premium wedding photography style.\n' +
+    '- Return exactly one final image.';
+
+  const falInput = {
+    prompt: finalPromptText,
+    image_urls: [motherDataUri, fatherDataUri, templateDataUri],
+    image_size: 'portrait_16_9' as const,
+    num_images: 1,
+    max_images: 1,
+    enhance_prompt_mode: 'standard' as const,
+    enable_safety_checker: true,
+  };
+
+  const falDebugId = createFalDebugId();
+  logger.info(
+    {
+      falDebugId,
+      model: resolvedModel,
+      finalPromptLength: finalPromptText.length,
+      imageCount: falInput.image_urls.length,
+      imageSummaries: falInput.image_urls.map(summarizeImageUrl),
+    },
+    'FAL wedding style generation request prepared',
+  );
+
+  const result: any = await fal.subscribe(resolvedModel, {
+    input: falInput,
+    logs: true,
+  });
+  const outputUrl = result?.data?.images?.[0]?.url as string | undefined;
+  if (!outputUrl) {
+    throw new Error('FAL returned no output image URL for wedding generation');
+  }
+
+  const outputResponse = await axios.get<ArrayBuffer>(outputUrl, { responseType: 'arraybuffer' });
+  const outputMimeType = (outputResponse.headers['content-type'] as string) || 'image/png';
+  const outputBase64 = Buffer.from(outputResponse.data as any).toString('base64');
+
+  return {
+    data: outputBase64,
+    mimeType: outputMimeType,
+    text: undefined,
+  };
+};
+
 export const streamCoachResponse = async (params: {
   context: string;
   history: Array<{ role: string; content: string }>;
