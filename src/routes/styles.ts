@@ -816,6 +816,11 @@ export const createStylesRouter = () => {
 
       const userId = authReq.user.id;
       const styleId = typeof req.body?.style_id === 'string' ? req.body.style_id : null;
+      const templateImageSource =
+        typeof req.body?.template_image_url === 'string'
+          ? req.body.template_image_url
+          : (typeof req.body?.template_image_path === 'string' ? req.body.template_image_path : '');
+      const promptOverride = typeof req.body?.prompt === 'string' ? req.body.prompt : null;
       const firstImageSource =
         typeof req.body?.first_image_url === 'string'
           ? req.body.first_image_url
@@ -829,17 +834,19 @@ export const createStylesRouter = () => {
         : (req.header('x-request-id') || null);
       const requestedModel = typeof req.body?.model === 'string' ? req.body.model : undefined;
 
-      if (!styleId || !firstImageSource || !secondImageSource) {
+      if (!firstImageSource || !secondImageSource || (!styleId && !templateImageSource)) {
         res.status(400).json({
           error: 'invalid_request',
-          message: 'style_id, first_image_url and second_image_url are required',
+          message: 'first_image_url, second_image_url and (style_id or template_image_url/template_image_path) are required',
         });
         return;
       }
 
       const coupleTemplates = await loadCoupleTemplateItems();
-      const selectedTemplate = coupleTemplates.find(item => item.styleId === styleId) || null;
-      if (!selectedTemplate) {
+      const selectedTemplate = styleId
+        ? (coupleTemplates.find(item => item.styleId === styleId) || null)
+        : null;
+      if (styleId && !selectedTemplate && !templateImageSource) {
         res.status(400).json({ error: 'invalid_request', message: `Invalid couple style_id: ${styleId}` });
         return;
       }
@@ -847,7 +854,16 @@ export const createStylesRouter = () => {
       const bucket: any = storage.bucket();
       const firstResolved = await downloadImageFromSource(bucket, firstImageSource);
       const secondResolved = await downloadImageFromSource(bucket, secondImageSource);
-      const templateResolved = await downloadImageFromSource(bucket, selectedTemplate.storagePath);
+      const templateSourceToUse = templateImageSource || selectedTemplate?.storagePath || '';
+      if (!templateSourceToUse) {
+        res.status(400).json({ error: 'invalid_request', message: 'Template image source could not be resolved' });
+        return;
+      }
+      const templateResolved = await downloadImageFromSource(bucket, templateSourceToUse);
+      const promptForGeneration =
+        promptOverride
+        || selectedTemplate?.prompt
+        || 'Do not change the template background at all. Only face swap: apply mother and father faces from input photos onto the two people in template, while keeping composition, clothes, pose and lighting exactly the same.';
       const now = Date.now();
       const firstExt = extFromMime(firstResolved.mimeType || 'image/jpeg');
       const secondExt = extFromMime(secondResolved.mimeType || 'image/jpeg');
@@ -872,7 +888,7 @@ export const createStylesRouter = () => {
         secondMimeType: secondResolved.mimeType || 'image/jpeg',
         templateImageBase64: templateResolved.buffer.toString('base64'),
         templateMimeType: templateResolved.mimeType || 'image/jpeg',
-        prompt: selectedTemplate.prompt,
+        prompt: promptForGeneration,
         model: requestedModel,
       });
 
@@ -889,7 +905,13 @@ export const createStylesRouter = () => {
       const outputUrl = await getSignedOrPublicUrl(generatedPath);
       const firstInputUrl = await getSignedOrPublicUrl(firstInputPath);
       const secondInputUrl = await getSignedOrPublicUrl(secondInputPath);
-      const templateUrl = selectedTemplate.imageUrl;
+      const templateStoragePath =
+        selectedTemplate?.storagePath
+        || resolveStorageObjectPath(templateSourceToUse)
+        || null;
+      const templateUrl =
+        selectedTemplate?.imageUrl
+        || (templateStoragePath ? await getSignedOrPublicUrl(templateStoragePath) : templateSourceToUse);
 
       await db
         .collection('users')
@@ -899,14 +921,14 @@ export const createStylesRouter = () => {
         .set({
           id: generatedId,
           styleType: 'cift_cekimi',
-          styleId,
+          styleId: styleId || selectedTemplate?.styleId || null,
           requestId,
-          prompt: selectedTemplate.prompt,
+          prompt: promptForGeneration,
           inputFirstImagePath: firstInputPath,
           inputFirstImageUrl: firstInputUrl,
           inputSecondImagePath: secondInputPath,
           inputSecondImageUrl: secondInputUrl,
-          templateImagePath: selectedTemplate.storagePath,
+          templateImagePath: templateStoragePath,
           templateImageUrl: templateUrl,
           outputImagePath: generatedPath,
           outputImageUrl: outputUrl,
@@ -921,15 +943,15 @@ export const createStylesRouter = () => {
       );
       res.json({
         request_id: requestId,
-        style_id: styleId,
+        style_id: styleId || selectedTemplate?.styleId || null,
         user_id: userId,
-        prompt: selectedTemplate.prompt,
+        prompt: promptForGeneration,
         input: {
           first_path: firstInputPath,
           first_url: firstInputUrl,
           second_path: secondInputPath,
           second_url: secondInputUrl,
-          template_path: selectedTemplate.storagePath,
+          template_path: templateStoragePath,
           template_url: templateUrl,
         },
         output: {
@@ -1137,6 +1159,16 @@ export const createStylesRouter = () => {
         res.status(401).json({ error: 'access_denied', message: 'Authentication required' });
         return;
       }
+
+      // Force fresh history payloads (avoid conditional 304 responses).
+      delete req.headers['if-none-match'];
+      delete req.headers['if-modified-since'];
+      res.set({
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        Pragma: 'no-cache',
+        Expires: '0',
+        'Surrogate-Control': 'no-store',
+      });
 
       const userId = authReq.user.id;
       logger.info({ userId, step: 'history_list_request_received' }, 'Generated history list request received');

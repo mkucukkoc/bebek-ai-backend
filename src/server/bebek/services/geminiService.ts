@@ -11,6 +11,7 @@ const DEFAULT_GEMINI_SUMMARY_MODEL = process.env.GEMINI_SUMMARY_MODEL
   || process.env.GEMINI_MODEL
   || 'gemini-2.5-flash';
 const DEFAULT_FAL_IMAGE_MODEL = process.env.FAL_IMAGE_MODEL || 'fal-ai/bytedance/seedream/v4/edit';
+const DEFAULT_FAL_COUPLE_IMAGE_MODEL = process.env.FAL_COUPLE_IMAGE_MODEL || DEFAULT_FAL_IMAGE_MODEL;
 
 const getApiKey = () => process.env.GEMINI_API_KEY || '';
 const getFalKey = () => process.env.FAL_KEY || process.env.FAL_API_KEY || '';
@@ -544,7 +545,7 @@ export const generateCoupleStyledPhotoWithTemplate = async (params: {
   prompt: string;
   model?: string;
 }) => {
-  const resolvedModel = params.model || DEFAULT_FAL_IMAGE_MODEL;
+  const resolvedModel = params.model || DEFAULT_FAL_COUPLE_IMAGE_MODEL;
   const falKey = getFalKey();
 
   if (!falKey) {
@@ -565,21 +566,25 @@ export const generateCoupleStyledPhotoWithTemplate = async (params: {
   const templateDataUri = `data:${params.templateMimeType};base64,${params.templateImageBase64}`;
 
   const finalPromptText =
-    'TASK: Create a couple portrait using two identity references and one scene template.\n\n' +
+    'TASK: Strict face swap only. Use TEMPLATE PHOTO as the immutable base image.\n\n' +
     'INPUTS:\n' +
-    '1) PERSON 1 PHOTO -> preserve identity exactly.\n' +
-    '2) PERSON 2 PHOTO -> preserve identity exactly.\n' +
-    '3) TEMPLATE PHOTO -> copy only composition, pose and environment.\n\n' +
+    '1) MOTHER PHOTO: identity source for the woman in template.\n' +
+    '2) FATHER PHOTO: identity source for the man in template.\n' +
+    '3) TEMPLATE PHOTO: must remain unchanged.\n\n' +
     `STYLE BRIEF:\n${params.prompt}\n\n` +
-    'RULES:\n' +
-    '- Keep both persons facial identity unchanged.\n' +
-    '- Place both persons naturally into the template couple scene.\n' +
-    '- Use medium-shot framing. Keep camera slightly farther from subjects.\n' +
-    '- Do not crop faces. Keep both full faces clearly visible and sharp.\n' +
-    '- Keep realistic skin tones, anatomy and lighting.\n' +
-    '- Do not create extra people.\n' +
-    '- Keep result ultra realistic, premium couple photography style.\n' +
-    '- Return exactly one final image.';
+    'ABSOLUTE RULES (HIGHEST PRIORITY):\n' +
+    '- Do NOT change template background at all.\n' +
+    '- Do NOT change composition, camera angle, framing, pose, body positions, clothes, accessories, lighting, shadows, colors, or scene geometry.\n' +
+    '- Do NOT retouch, restyle, beautify, or regenerate the scene.\n' +
+    '- Replace ONLY faces:\n' +
+    '  - swap mother\'s face onto the female face in template,\n' +
+    '  - swap father\'s face onto the male face in template.\n' +
+    '- Keep all non-face pixels from template exactly the same.\n' +
+    '- Do not add/remove people or objects.\n' +
+    '- Keep realistic skin texture, face proportions, and natural blending.\n' +
+    '- Final output must look like the same template photo with only the two faces changed.\n\n' +
+    'OUTPUT:\n' +
+    '- Exactly 1 ultra-realistic image.';
 
   const falInput = {
     prompt: finalPromptText,
